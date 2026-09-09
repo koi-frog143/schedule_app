@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.os.VibrationEffect
@@ -75,21 +76,54 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                 }
-                "vibrate" -> {
-                    val durationMs = (call.argument<Number>("duration") ?: 3000).toLong()
+                "requestIgnoreBatteryOptimizations" -> {
                     try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } else {
+                            result.success(true)
+                        }
+                    } catch (e: Exception) {
+                        try {
+                            val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(fallbackIntent)
+                            result.success(true)
+                        } catch (e2: Exception) {
+                            result.error("BATTERY_ERROR", e2.message, null)
+                        }
+                    }
+                }
+                "isIgnoringBatteryOptimizations" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                        result.success(powerManager.isIgnoringBatteryOptimizations(packageName))
+                    } else {
+                        result.success(true)
+                    }
+                }
+                "vibrate" -> {
+                    try {
+                        val timings = longArrayOf(0, 1000, 200, 1000, 200, 1000)
+                        val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
                             val vibrator = vibratorManager?.defaultVibrator ?: @Suppress("DEPRECATION") (getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-                            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                            vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
                         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                            vibrator?.vibrate(VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE))
+                            vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
                         } else {
                             @Suppress("DEPRECATION")
                             val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
                             @Suppress("DEPRECATION")
-                            vibrator?.vibrate(durationMs)
+                            vibrator?.vibrate(timings, -1)
                         }
                         result.success(true)
                     } catch (e: Exception) {

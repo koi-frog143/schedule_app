@@ -254,14 +254,15 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static const String alarmChannelId = 'class_alarms_channel_v3';
-  static const String silentChannelId = 'class_silent_channel_v3';
+  static const String alarmChannelId = 'class_alarms_channel_v4';
+  static const String silentChannelId = 'class_silent_channel_v4';
 
   static const MethodChannel _channel =
       MethodChannel('com.example.schedule_app/settings');
 
+  // Pulsed rhythm: 1s vibrate, 200ms rest, 1s vibrate, 200ms rest, 1s vibrate (3s total active buzz)
   static final Int64List threeSecVibrationPattern =
-      Int64List.fromList([0, 3000]);
+      Int64List.fromList([0, 1000, 200, 1000, 200, 1000]);
 
   /// Triggers a 3-second physical vibration on the device
   static Future<void> triggerVibration({int durationMs = 3000}) async {
@@ -302,6 +303,27 @@ class NotificationService {
     }
   }
 
+  /// Requests ignoring battery optimizations so background alarms always fire on time
+  static Future<void> requestIgnoreBatteryOptimizations() async {
+    try {
+      await _channel.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (e) {
+      debugPrint('Error requesting battery optimization ignore: $e');
+    }
+  }
+
+  /// Checks if battery optimization is disabled for this app
+  static Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final bool? isIgnoring =
+          await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return isIgnoring ?? false;
+    } catch (e) {
+      debugPrint('Error checking battery optimization status: $e');
+      return false;
+    }
+  }
+
   static Future<void> init() async {
     // 1. Initialize Timezones using actual device local timezone
     tz.initializeTimeZones();
@@ -323,6 +345,16 @@ class NotificationService {
       },
     );
 
+    final androidImplementation = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+
+    // Delete older channel versions so new vibration pattern takes effect immediately
+    try {
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v2');
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v3');
+    } catch (_) {}
+
     // 2. Register Android Notification Channels
     final alarmChannel = AndroidNotificationChannel(
       alarmChannelId,
@@ -343,9 +375,6 @@ class NotificationService {
       enableVibration: false,
     );
 
-    final androidImplementation = _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
     await androidImplementation?.createNotificationChannel(alarmChannel);
     await androidImplementation?.createNotificationChannel(silentChannel);
   }
@@ -395,7 +424,8 @@ class NotificationService {
     for (final reminder in course.reminders) {
       if (reminder.minutesBefore <= 0) continue;
 
-      final int notificationId = Object.hash(course.id, reminder.minutesBefore);
+      final int notificationId =
+          (Object.hash(course.id, reminder.minutesBefore) & 0x7FFFFFFF);
 
       final reminderTime = _nextInstanceOfReminder(
         course.dayOfWeek,
@@ -464,6 +494,35 @@ class NotificationService {
           );
         } catch (e2) {
           debugPrint('Fallback inexact schedule also failed: $e2');
+        }
+      }
+
+      // If the class is today and starts within the reminder window, fire an immediate alert
+      final nowTime = tz.TZDateTime.now(tz.local);
+      if (course.dayOfWeek == nowTime.weekday) {
+        final todayClassTime = tz.TZDateTime(
+          tz.local,
+          nowTime.year,
+          nowTime.month,
+          nowTime.day,
+          course.startHour,
+          course.startMinute,
+        );
+        final diffSeconds = todayClassTime.difference(nowTime).inSeconds;
+        if (todayClassTime.isAfter(nowTime) &&
+            diffSeconds <= reminder.minutesBefore * 60) {
+          try {
+            await _notificationsPlugin.show(
+              (Object.hash(course.id, reminder.minutesBefore, 'immediate') &
+                  0x7FFFFFFF),
+              '[$prefix] Class Starting Soon: ${course.title}',
+              'Starts at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
+              notificationDetails,
+            );
+            if (reminder.isAlarm) {
+              triggerVibration(durationMs: 3000);
+            }
+          } catch (_) {}
         }
       }
     }
@@ -592,35 +651,23 @@ class NotificationService {
       classTime = classTime.add(const Duration(days: 1));
     }
 
-    // If it's today and the class has already passed earlier today, advance to next week
-    if (classTime.weekday == classDayOfWeek && classTime.isBefore(now)) {
-      classTime = classTime.add(const Duration(days: 7));
-    }
-
     tz.TZDateTime reminderTime =
         classTime.subtract(Duration(minutes: reminderMinutes));
 
-    // If the reminder time is in the past:
-    if (reminderTime.isBefore(now)) {
-      // If the class itself is still in the future TODAY (e.g. user just saved a class starting in 4 mins
-      // with a 5-min reminder), trigger within 5 seconds so the user is alerted immediately!
-      if (classTime.isAfter(now)) {
-        reminderTime = now.add(const Duration(seconds: 5));
-      } else {
-        // If the class itself is in the past, push by 7 days
-        classTime = classTime.add(const Duration(days: 7));
-        reminderTime = classTime.subtract(Duration(minutes: reminderMinutes));
-      }
+    // If the reminder time has already passed for this week, advance by 7 days
+    while (reminderTime.isBefore(now)) {
+      reminderTime = reminderTime.add(const Duration(days: 7));
     }
 
     return reminderTime;
   }
 
   static Future<void> cancelAlarm(String courseId) async {
-    await _notificationsPlugin.cancel(courseId.hashCode);
+    await _notificationsPlugin.cancel(courseId.hashCode & 0x7FFFFFFF);
     // Cancel potential reminder minute hash IDs
     for (final mins in [5, 10, 15, 30, 45, 60, 120]) {
-      await _notificationsPlugin.cancel(Object.hash(courseId, mins));
+      await _notificationsPlugin
+          .cancel(Object.hash(courseId, mins) & 0x7FFFFFFF);
     }
   }
 }
@@ -717,17 +764,17 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
       _isLoading = false;
     });
     await NotificationService.requestPermissions();
-    _rescheduleAllNotifications();
-    _syncToHomeWidget();
+    await _rescheduleAllNotifications();
+    await _syncToHomeWidget();
   }
 
   Future<void> _saveCourses() async {
     await ScheduleStorage.saveClasses(_allCourses);
-    _rescheduleAllNotifications();
-    _syncToHomeWidget();
+    await _rescheduleAllNotifications();
+    await _syncToHomeWidget();
   }
 
-  void _rescheduleAllNotifications() async {
+  Future<void> _rescheduleAllNotifications() async {
     for (var course in _allCourses) {
       await NotificationService.scheduleCourseAlarm(course);
     }
@@ -2051,7 +2098,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
                           if (titleController.text.trim().isEmpty) return;
                           final updated = CourseClass(
                             id: classToEdit?.id ??
@@ -2078,8 +2125,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             }
                           });
 
-                          _saveCourses();
-                          Navigator.pop(context);
+                          await NotificationService.scheduleCourseAlarm(updated);
+                          await _saveCourses();
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                          }
                         },
                         child: const Text(
                           'Save Class',
@@ -2426,6 +2476,57 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                               ),
                               Text(
                                 'Open app permissions in Android settings.',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 13, color: Colors.black45),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Battery Optimization Tile (Opens dialog/settings to allow background running)
+                InkWell(
+                  onTap: () async {
+                    await NotificationService.requestIgnoreBatteryOptimizations();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232323).withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.battery_charging_full_outlined,
+                            size: 18, color: Color(0xFF232323)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Background Battery Settings',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF232323),
+                                ),
+                              ),
+                              Text(
+                                'Allow app to run alarms unrestricted in background.',
                                 style: TextStyle(
                                   fontFamily: 'serif',
                                   fontSize: 11,

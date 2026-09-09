@@ -873,9 +873,21 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.add, size: 30, color: Color(0xFF333333)),
-            onPressed: () => _showAddEditClassDialog(),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded,
+                    size: 28, color: Color(0xFF333333)),
+                tooltip: 'Test Alarms & Notifications',
+                onPressed: () => _showNotificationTestModal(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 30, color: Color(0xFF333333)),
+                tooltip: 'Add Subject',
+                onPressed: () => _showAddEditClassDialog(),
+              ),
+            ],
           ),
         ],
       ),
@@ -1950,167 +1962,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                                       ),
                                     );
                                    }),
-                                  const SizedBox(height: 6),
-                                  const Divider(height: 1, color: Colors.black12),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'Test Notification & Sound Settings:',
-                                    style: TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 11,
-                                      fontStyle: FontStyle.italic,
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Wrap(
-                                    spacing: 6,
-                                    runSpacing: 4,
-                                    children: [
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              const Color(0xFF232323),
-                                          side: const BorderSide(
-                                              color: Colors.black26),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 6),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        icon: const Icon(Icons.alarm_on,
-                                            size: 15),
-                                        label: const Text('Test Alarm Sound',
-                                            style: TextStyle(
-                                                fontFamily: 'serif',
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold)),
-                                        onPressed: () async {
-                                          final ok = await NotificationService
-                                              .sendTestNotification(
-                                                  isAlarm: true);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(ok
-                                                    ? '🔔 Alarm triggered! Check sound and status bar banner.'
-                                                    : '⚠️ Could not trigger alarm. Please check notification permissions.'),
-                                                duration: const Duration(seconds: 2),
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      ),
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              Colors.grey.shade800,
-                                          side: const BorderSide(
-                                              color: Colors.black26),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 6),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        icon: const Icon(
-                                            Icons.notifications_none,
-                                            size: 15),
-                                        label: const Text('Test Push',
-                                            style: TextStyle(
-                                                fontFamily: 'serif',
-                                                fontSize: 11)),
-                                        onPressed: () async {
-                                          final ok = await NotificationService
-                                              .sendTestNotification(
-                                                  isAlarm: false);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(ok
-                                                    ? '🔕 Test push notification sent to status bar!'
-                                                    : '⚠️ Could not trigger push notification.'),
-                                                duration: const Duration(seconds: 2),
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      ),
-                                      OutlinedButton.icon(
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor:
-                                              const Color(0xFFC0392B),
-                                          side: const BorderSide(
-                                              color: Color(0xFFC0392B)),
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 8, vertical: 6),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        icon: const Icon(
-                                            Icons.timer_outlined,
-                                            size: 15),
-                                        label: const Text('⏱️ Test 10s Alarm',
-                                            style: TextStyle(
-                                                fontFamily: 'serif',
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold)),
-                                        onPressed: () async {
-                                          final ok = await NotificationService
-                                              .scheduleTestCountdownAlarm(seconds: 10);
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text(ok
-                                                    ? '⏱️ Test alarm scheduled in 10 seconds! Lock your phone or leave the app now to test.'
-                                                    : '⚠️ Failed to schedule 10s test alarm.'),
-                                                duration: const Duration(seconds: 4),
-                                              ),
-                                            );
-                                          }
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  InkWell(
-                                    onTap: () async {
-                                      await NotificationService.openExactAlarmSettings();
-                                    },
-                                    child: Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 4),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.settings_outlined,
-                                              size: 13,
-                                              color: Colors.grey.shade600),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            'Manage "Alarms & Reminders" permission in Android Settings',
-                                            style: TextStyle(
-                                              fontFamily: 'serif',
-                                              fontSize: 10.5,
-                                              color: Colors.grey.shade600,
-                                              decoration: TextDecoration.underline,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                                 ],
+                               ),
+                             ),
+                           ],
                         ],
                       ),
                     ),
@@ -2199,6 +2054,387 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
           },
         ),
       );
+  }
+
+  void _showNotificationTestModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFFFF9F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        final viewPaddingBottom = MediaQuery.of(ctx).viewPadding.bottom;
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: viewPaddingBottom + 16,
+            left: 20,
+            right: 20,
+            top: 14,
+          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Pull Handle
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+
+                // Title Header
+                Row(
+                  children: [
+                    const Icon(Icons.notifications_active_outlined,
+                        size: 26, color: Color(0xFF232323)),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Alarms & Notifications',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        fontStyle: FontStyle.italic,
+                        letterSpacing: -0.3,
+                        color: Color(0xFF232323),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Verify system alarms, notification channels, and background wake-up.',
+                  style: TextStyle(
+                    fontFamily: 'serif',
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Card 1: Instant Alarm Sound
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF9E79).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.alarm_on,
+                            size: 24, color: Color(0xFF232323)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Instant Alarm Sound',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF232323),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Fires audible alarm stream sound and vibration immediately.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF232323),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .sendTestNotification(isAlarm: true);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '🔔 Alarm triggered! Check sound and status bar.'
+                                    : '⚠️ Failed to trigger alarm. Check permissions.'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Test',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Card 2: Instant Push Notification
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD6E8FA).withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.notifications_none,
+                            size: 24, color: Color(0xFF232323)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Silent Push Banner',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF232323),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Fires visual heads-up notification banner without alarm sound.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF232323),
+                          side: const BorderSide(color: Colors.black26),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .sendTestNotification(isAlarm: false);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '🔕 Test push notification sent to status bar!'
+                                    : '⚠️ Failed to send push notification.'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Test',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Card 3: 10s Background Countdown Alarm
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: const Color(0xFFC0392B).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFCE2E6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.timer_outlined,
+                            size: 24, color: Color(0xFFC0392B)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '10s Countdown Alarm',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFC0392B),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Tap, then lock phone or leave app to test lock-screen wake-up.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC0392B),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .scheduleTestCountdownAlarm(seconds: 10);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '⏱️ Alarm scheduled in 10 seconds! Lock your phone now to test.'
+                                    : '⚠️ Failed to schedule 10s alarm.'),
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Start 10s',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Settings Link Tile
+                InkWell(
+                  onTap: () async {
+                    await NotificationService.openExactAlarmSettings();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232323).withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.settings_suggest_outlined,
+                            size: 20, color: Color(0xFF232323)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Android "Alarms & Reminders" Settings',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF232323),
+                                ),
+                              ),
+                              Text(
+                                'Tap to open special app access settings on your device',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 14, color: Colors.black45),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Close Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF232323),
+                      side: const BorderSide(color: Colors.black26),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Done',
+                        style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

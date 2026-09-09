@@ -8,6 +8,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:home_widget/home_widget.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 // ==========================================
 // 1. MODEL
@@ -251,44 +252,81 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  static const String alarmChannelId = 'class_alarms_channel_v2';
+  static const String silentChannelId = 'class_silent_channel_v2';
+
   static Future<void> init() async {
+    // 1. Initialize Timezones using actual device local timezone
     tz.initializeTimeZones();
+    try {
+      final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timezoneInfo.identifier));
+    } catch (e) {
+      debugPrint('Error getting device local timezone: $e');
+    }
+
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
-    await _notificationsPlugin.initialize(initSettings);
+    await _notificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse details) {
+        debugPrint('Notification clicked: ${details.payload}');
+      },
+    );
 
-    // Request permissions for Android 13+
-    final androidImplementation = _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
-    await androidImplementation?.requestNotificationsPermission();
-    await androidImplementation?.requestExactAlarmsPermission();
-
-    // Register notification channels for audible alarms and gentle reminders
+    // 2. Register Android Notification Channels
     const alarmChannel = AndroidNotificationChannel(
-      'class_alarms_channel',
-      'Class Alarms & Reminders',
-      description: 'Audible reminders and alarms for upcoming courses',
+      alarmChannelId,
+      'Class Alarms',
+      description: 'Audible alarms and high-priority reminders for upcoming classes',
       importance: Importance.max,
       playSound: true,
       enableVibration: true,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
     );
     const silentChannel = AndroidNotificationChannel(
-      'class_silent_channel',
+      silentChannelId,
       'Silent Class Reminders',
       description: 'Silent notifications for upcoming courses',
       importance: Importance.defaultImportance,
       playSound: false,
       enableVibration: false,
     );
+
+    final androidImplementation = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
     await androidImplementation?.createNotificationChannel(alarmChannel);
     await androidImplementation?.createNotificationChannel(silentChannel);
   }
 
+  /// Request runtime permissions for notifications and exact alarms
+  static Future<bool> requestPermissions() async {
+    final androidImplementation = _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidImplementation == null) return true;
+
+    // 1. Request POST_NOTIFICATIONS (Android 13+)
+    final notifGranted = await androidImplementation.requestNotificationsPermission();
+
+    // 2. Request Exact Alarm permission (Android 12/13/14+)
+    final canScheduleExact =
+        await androidImplementation.canScheduleExactNotifications() ?? false;
+    if (!canScheduleExact) {
+      await androidImplementation.requestExactAlarmsPermission();
+    }
+
+    // 3. Request Full Screen Intent permission (Android 14+)
+    await androidImplementation.requestFullScreenIntentPermission();
+
+    return notifGranted ?? true;
+  }
+
   static Future<void> scheduleCourseAlarm(CourseClass course) async {
-    // Cancel existing alarms/notifications for this course
+    // Cancel any existing alarms/notifications for this course
     await cancelAlarm(course.id);
 
     if (course.reminders.isEmpty) {
@@ -309,32 +347,109 @@ class NotificationService {
 
       final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
-          reminder.isAlarm ? 'class_alarms_channel' : 'class_silent_channel',
-          reminder.isAlarm ? 'Class Alarms & Reminders' : 'Silent Class Reminders',
+          reminder.isAlarm ? alarmChannelId : silentChannelId,
+          reminder.isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
           channelDescription: reminder.isAlarm
-              ? 'Audible reminders and alarms for upcoming courses'
+              ? 'Audible alarms and high-priority reminders for upcoming courses'
               : 'Silent notifications for upcoming courses',
           importance: reminder.isAlarm ? Importance.max : Importance.defaultImportance,
-          priority: reminder.isAlarm ? Priority.high : Priority.defaultPriority,
+          priority: reminder.isAlarm ? Priority.max : Priority.defaultPriority,
           playSound: reminder.isAlarm,
           enableVibration: reminder.isAlarm,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
+          audioAttributesUsage: reminder.isAlarm
+              ? AudioAttributesUsage.alarm
+              : AudioAttributesUsage.notification,
+          category: reminder.isAlarm
+              ? AndroidNotificationCategory.alarm
+              : AndroidNotificationCategory.reminder,
+          fullScreenIntent: reminder.isAlarm,
+          visibility: NotificationVisibility.public,
         ),
       );
 
       final String prefix = reminder.isAlarm ? 'Alarm' : 'Reminder';
-      await _notificationsPlugin.zonedSchedule(
-        notificationId,
-        '[$prefix] Upcoming Class: ${course.title}',
-        'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
-        reminderTime,
-        notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
+      final scheduleMode = reminder.isAlarm
+          ? AndroidScheduleMode.alarmClock
+          : AndroidScheduleMode.exactAllowWhileIdle;
+
+      try {
+        await _notificationsPlugin.zonedSchedule(
+          notificationId,
+          '[$prefix] Upcoming Class: ${course.title}',
+          'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
+          reminderTime,
+          notificationDetails,
+          androidScheduleMode: scheduleMode,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+        );
+      } catch (e) {
+        debugPrint('Error scheduling with primary mode ($scheduleMode): $e. Attempting fallback...');
+        try {
+          await _notificationsPlugin.zonedSchedule(
+            notificationId,
+            '[$prefix] Upcoming Class: ${course.title}',
+            'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
+            reminderTime,
+            notificationDetails,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        } catch (e2) {
+          debugPrint('Fallback exact schedule failed: $e2. Using inexactAllowWhileIdle.');
+          await _notificationsPlugin.zonedSchedule(
+            notificationId,
+            '[$prefix] Upcoming Class: ${course.title}',
+            'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
+            reminderTime,
+            notificationDetails,
+            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+            uiLocalNotificationDateInterpretation:
+                UILocalNotificationDateInterpretation.absoluteTime,
+            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
+          );
+        }
+      }
     }
+  }
+
+  /// Sends an immediate test alert so the user can verify system alarms and notifications
+  static Future<void> sendTestNotification({required bool isAlarm}) async {
+    await requestPermissions();
+
+    final notificationDetails = NotificationDetails(
+      android: AndroidNotificationDetails(
+        isAlarm ? alarmChannelId : silentChannelId,
+        isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
+        channelDescription: isAlarm
+            ? 'Audible alarms and high-priority reminders for upcoming courses'
+            : 'Silent notifications for upcoming courses',
+        importance: isAlarm ? Importance.max : Importance.defaultImportance,
+        priority: isAlarm ? Priority.max : Priority.defaultPriority,
+        playSound: isAlarm,
+        enableVibration: isAlarm,
+        audioAttributesUsage: isAlarm
+            ? AudioAttributesUsage.alarm
+            : AudioAttributesUsage.notification,
+        category: isAlarm
+            ? AndroidNotificationCategory.alarm
+            : AndroidNotificationCategory.reminder,
+        fullScreenIntent: isAlarm,
+        visibility: NotificationVisibility.public,
+      ),
+    );
+
+    await _notificationsPlugin.show(
+      888888,
+      isAlarm ? '[Alarm Test] Class Alarm Sound' : '[Push Test] Silent Push Notification',
+      isAlarm
+          ? 'System alarm is connected! Sound, vibration, and alarm channel verified.'
+          : 'Push notification is connected! Visual heads-up banner verified.',
+      notificationDetails,
+    );
   }
 
   static tz.TZDateTime _nextInstanceOfReminder(
@@ -465,6 +580,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
       _allCourses = courses;
       _isLoading = false;
     });
+    await NotificationService.requestPermissions();
     _rescheduleAllNotifications();
     _syncToHomeWidget();
   }
@@ -1741,7 +1857,76 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                                         ],
                                       ),
                                     );
-                                  }),
+                                   }),
+                                  const SizedBox(height: 6),
+                                  const Divider(height: 1, color: Colors.black12),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      TextButton.icon(
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                              const Color(0xFF232323),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 4),
+                                        ),
+                                        icon: const Icon(Icons.alarm_on,
+                                            size: 15),
+                                        label: const Text('Test Alarm Sound',
+                                            style: TextStyle(
+                                                fontFamily: 'serif',
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold)),
+                                        onPressed: () async {
+                                          await NotificationService
+                                              .sendTestNotification(
+                                                  isAlarm: true);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                    'Triggered test alarm! Check notification & sound.'),
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                      TextButton.icon(
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                              Colors.grey.shade700,
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 4),
+                                        ),
+                                        icon: const Icon(
+                                            Icons.notifications_none,
+                                            size: 15),
+                                        label: const Text('Test Push',
+                                            style: TextStyle(
+                                                fontFamily: 'serif',
+                                                fontSize: 12)),
+                                        onPressed: () async {
+                                          await NotificationService
+                                              .sendTestNotification(
+                                                  isAlarm: false);
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                    'Triggered test push notification!'),
+                                                duration: Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                      ),
+                                    ],
+                                  ),
                                 ],
                               ),
                             ),

@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -8,6 +10,7 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:home_widget/home_widget.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 // ==========================================
 // 1. MODEL
@@ -251,54 +254,182 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  static const String alarmChannelId = 'class_alarms_channel_v5';
+  static const String silentChannelId = 'class_silent_channel_v5';
+
+  static const MethodChannel _channel =
+      MethodChannel('com.example.schedule_app/settings');
+
+  // Pulsed rhythm: 1s vibrate, 200ms rest, 1s vibrate, 200ms rest, 1s vibrate (3s total active buzz)
+  static final Int64List threeSecVibrationPattern =
+      Int64List.fromList([0, 1000, 200, 1000, 200, 1000]);
+
+  /// Triggers a 3-second physical vibration on the device
+  static Future<void> triggerVibration({int durationMs = 3000}) async {
+    try {
+      await _channel.invokeMethod('vibrate', {'duration': durationMs});
+    } catch (e) {
+      debugPrint('Error triggering physical vibration: $e');
+    }
+  }
+
+  /// Opens Android app notification settings directly
+  static Future<void> openNotificationSettings() async {
+    try {
+      await _channel.invokeMethod('openNotificationSettings');
+    } catch (e) {
+      debugPrint('Error opening notification settings via platform channel: $e');
+      try {
+        final androidImplementation = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidImplementation?.requestExactAlarmsPermission();
+      } catch (_) {}
+    }
+  }
+
+  /// Opens Android system settings for "Alarms & reminders" special app access
+  static Future<void> openExactAlarmSettings() async {
+    try {
+      await _channel.invokeMethod('openExactAlarmSettings');
+    } catch (e) {
+      debugPrint('Error opening exact alarm settings via platform channel: $e');
+      try {
+        final androidImplementation = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidImplementation?.requestExactAlarmsPermission();
+      } catch (_) {}
+    }
+  }
+
+  /// Requests ignoring battery optimizations so background alarms always fire on time
+  static Future<void> requestIgnoreBatteryOptimizations() async {
+    try {
+      await _channel.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (e) {
+      debugPrint('Error requesting battery optimization ignore: $e');
+    }
+  }
+
+  /// Checks if battery optimization is disabled for this app
+  static Future<bool> isIgnoringBatteryOptimizations() async {
+    try {
+      final bool? isIgnoring =
+          await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      return isIgnoring ?? false;
+    } catch (e) {
+      debugPrint('Error checking battery optimization status: $e');
+      return false;
+    }
+  }
+
   static Future<void> init() async {
+    // 1. Initialize Timezones using actual device local timezone
     tz.initializeTimeZones();
+    try {
+      final timezoneInfo = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(timezoneInfo.identifier));
+    } catch (e) {
+      debugPrint('Error getting device local timezone: $e');
+    }
+
     const androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     const initSettings = InitializationSettings(android: androidSettings);
 
-    await _notificationsPlugin.initialize(initSettings);
+    await _notificationsPlugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse details) {
+        debugPrint('Notification clicked: ${details.payload}');
+      },
+    );
 
-    // Request permissions for Android 13+
     final androidImplementation = _notificationsPlugin
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>();
-    await androidImplementation?.requestNotificationsPermission();
-    await androidImplementation?.requestExactAlarmsPermission();
 
-    // Register notification channels for audible alarms and gentle reminders
-    const alarmChannel = AndroidNotificationChannel(
-      'class_alarms_channel',
-      'Class Alarms & Reminders',
-      description: 'Audible reminders and alarms for upcoming courses',
+    // Delete older channel versions so new vibration pattern takes effect immediately
+    try {
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v2');
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v3');
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v4');
+    } catch (_) {}
+
+    // 2. Register Android Notification Channels
+    final alarmChannel = AndroidNotificationChannel(
+      alarmChannelId,
+      'Class Alarms',
+      description: 'Audible alarms and 3-second vibration for upcoming classes',
       importance: Importance.max,
       playSound: true,
       enableVibration: true,
+      vibrationPattern: threeSecVibrationPattern,
+      audioAttributesUsage: AudioAttributesUsage.alarm,
     );
     const silentChannel = AndroidNotificationChannel(
-      'class_silent_channel',
+      silentChannelId,
       'Silent Class Reminders',
       description: 'Silent notifications for upcoming courses',
       importance: Importance.defaultImportance,
       playSound: false,
       enableVibration: false,
     );
+
     await androidImplementation?.createNotificationChannel(alarmChannel);
     await androidImplementation?.createNotificationChannel(silentChannel);
   }
 
+  /// Request runtime permissions for notifications (Android 13+)
+  static Future<bool> requestPermissions() async {
+    try {
+      final androidImplementation = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      if (androidImplementation == null) return true;
+
+      // Request standard POST_NOTIFICATIONS runtime permission
+      final notifGranted =
+          await androidImplementation.requestNotificationsPermission();
+      return notifGranted ?? true;
+    } catch (e) {
+      debugPrint('Error requesting notification permission: $e');
+      return false;
+    }
+  }
+
+  /// Checks whether Android allows scheduling exact alarms (Android 12+)
+  static Future<bool> canScheduleExact() async {
+    try {
+      final androidImplementation = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      return await androidImplementation?.canScheduleExactNotifications() ??
+          true;
+    } catch (e) {
+      debugPrint('Error checking exact alarm permission: $e');
+      return true;
+    }
+  }
+
   static Future<void> scheduleCourseAlarm(CourseClass course) async {
-    // Cancel existing alarms/notifications for this course
+    // Cancel any existing alarms/notifications for this course
     await cancelAlarm(course.id);
 
     if (course.reminders.isEmpty) {
       return;
     }
 
+    final bool canExact = await canScheduleExact();
+    if (!canExact) {
+      await openExactAlarmSettings();
+    }
+
     for (final reminder in course.reminders) {
       if (reminder.minutesBefore <= 0) continue;
 
-      final int notificationId = Object.hash(course.id, reminder.minutesBefore);
+      final int notificationId =
+          (Object.hash(course.id, reminder.minutesBefore) & 0x7FFFFFFF);
 
       final reminderTime = _nextInstanceOfReminder(
         course.dayOfWeek,
@@ -307,33 +438,162 @@ class NotificationService {
         reminder.minutesBefore,
       );
 
+      final String prefix = reminder.isAlarm ? 'Alarm' : 'Reminder';
+      final String title = '[$prefix] Upcoming Class: ${course.title}';
+      final String body =
+          'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})';
+
+      try {
+        await _channel.invokeMethod('scheduleAlarm', {
+          'id': notificationId,
+          'triggerAtMillis': reminderTime.millisecondsSinceEpoch,
+          'title': title,
+          'body': body,
+          'isAlarm': reminder.isAlarm,
+          'repeatWeekly': true,
+        });
+      } catch (e) {
+        debugPrint('Error scheduling native alarm: $e');
+      }
+
+      // If the class is today and starts within the reminder window, fire an immediate alert
+      final nowTime = tz.TZDateTime.now(tz.local);
+      if (course.dayOfWeek == nowTime.weekday) {
+        final todayClassTime = tz.TZDateTime(
+          tz.local,
+          nowTime.year,
+          nowTime.month,
+          nowTime.day,
+          course.startHour,
+          course.startMinute,
+        );
+        final diffSeconds = todayClassTime.difference(nowTime).inSeconds;
+        if (todayClassTime.isAfter(nowTime) &&
+            diffSeconds <= reminder.minutesBefore * 60) {
+          try {
+            await _notificationsPlugin.show(
+              (Object.hash(course.id, reminder.minutesBefore, 'immediate') &
+                  0x7FFFFFFF),
+              '[$prefix] Class Starting Soon: ${course.title}',
+              'Starts at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
+              NotificationDetails(
+                android: AndroidNotificationDetails(
+                  reminder.isAlarm ? alarmChannelId : silentChannelId,
+                  reminder.isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
+                  channelDescription: reminder.isAlarm
+                      ? 'Audible alarms and 3-second vibration for upcoming courses'
+                      : 'Silent notifications for upcoming courses',
+                  importance: reminder.isAlarm
+                      ? Importance.max
+                      : Importance.defaultImportance,
+                  priority: reminder.isAlarm
+                      ? Priority.max
+                      : Priority.defaultPriority,
+                  playSound: reminder.isAlarm,
+                  enableVibration: reminder.isAlarm,
+                  vibrationPattern:
+                      reminder.isAlarm ? threeSecVibrationPattern : null,
+                  audioAttributesUsage: reminder.isAlarm
+                      ? AudioAttributesUsage.alarm
+                      : AudioAttributesUsage.notification,
+                  category: reminder.isAlarm
+                      ? AndroidNotificationCategory.alarm
+                      : AndroidNotificationCategory.reminder,
+                  visibility: NotificationVisibility.public,
+                ),
+              ),
+            );
+            if (reminder.isAlarm) {
+              triggerVibration(durationMs: 3000);
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  /// Sends an immediate test alert so the user can verify sound, vibration, and channels
+  static Future<bool> sendTestNotification({required bool isAlarm}) async {
+    try {
+      // Ensure notification permission is requested if not already granted
+      final androidImplementation = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidImplementation?.requestNotificationsPermission();
+
+      if (isAlarm) {
+        // Immediately trigger 3-second vibration on device hardware
+        triggerVibration(durationMs: 3000);
+      }
+
       final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
-          reminder.isAlarm ? 'class_alarms_channel' : 'class_silent_channel',
-          reminder.isAlarm ? 'Class Alarms & Reminders' : 'Silent Class Reminders',
-          channelDescription: reminder.isAlarm
-              ? 'Audible reminders and alarms for upcoming courses'
+          isAlarm ? alarmChannelId : silentChannelId,
+          isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
+          channelDescription: isAlarm
+              ? 'Audible alarms and 3-second vibration for upcoming courses'
               : 'Silent notifications for upcoming courses',
-          importance: reminder.isAlarm ? Importance.max : Importance.defaultImportance,
-          priority: reminder.isAlarm ? Priority.high : Priority.defaultPriority,
-          playSound: reminder.isAlarm,
-          enableVibration: reminder.isAlarm,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
+          importance:
+              isAlarm ? Importance.max : Importance.defaultImportance,
+          priority: isAlarm ? Priority.max : Priority.defaultPriority,
+          playSound: isAlarm,
+          enableVibration: isAlarm,
+          vibrationPattern: isAlarm ? threeSecVibrationPattern : null,
+          audioAttributesUsage: isAlarm
+              ? AudioAttributesUsage.alarm
+              : AudioAttributesUsage.notification,
+          category: isAlarm
+              ? AndroidNotificationCategory.alarm
+              : AndroidNotificationCategory.reminder,
+          visibility: NotificationVisibility.public,
         ),
       );
 
-      final String prefix = reminder.isAlarm ? 'Alarm' : 'Reminder';
-      await _notificationsPlugin.zonedSchedule(
-        notificationId,
-        '[$prefix] Upcoming Class: ${course.title}',
-        'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
-        reminderTime,
+      await _notificationsPlugin.show(
+        888888,
+        isAlarm
+            ? '[Alarm Test] Class Alarm Sound'
+            : '[Push Test] Silent Push Notification',
+        isAlarm
+            ? 'Alarm verified! Playing sound and 3-second vibration.'
+            : 'Push notification is connected! Visual heads-up banner verified.',
         notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
       );
+      return true;
+    } catch (e, stack) {
+      debugPrint('sendTestNotification error: $e\n$stack');
+      return false;
+    }
+  }
+
+  /// Schedules an alarm to fire in 10 seconds.
+  /// Wakes the phone to the lock screen (does NOT open the app) and reliably vibrates 3 seconds.
+  static Future<bool> scheduleTestCountdownAlarm({int seconds = 10}) async {
+    try {
+      await requestPermissions();
+      final canExact = await canScheduleExact();
+      if (!canExact) {
+        await openExactAlarmSettings();
+      }
+
+      final triggerTime = DateTime.now().add(Duration(seconds: seconds));
+      const int testId = 777777;
+
+      await cancelAlarm('test_countdown');
+
+      await _channel.invokeMethod('scheduleAlarm', {
+        'id': testId,
+        'triggerAtMillis': triggerTime.millisecondsSinceEpoch,
+        'title': '[Countdown Alarm Test] 10s Alarm Triggered!',
+        'body': 'Alarm successfully woke up your lock screen with 3s vibration.',
+        'isAlarm': true,
+        'repeatWeekly': false,
+      });
+
+      return true;
+    } catch (e, stack) {
+      debugPrint('scheduleTestCountdownAlarm error: $e\n$stack');
+      return false;
     }
   }
 
@@ -350,6 +610,7 @@ class NotificationService {
       startMinute,
     );
 
+    // Advance until we match the class day of the week
     while (classTime.weekday != classDayOfWeek) {
       classTime = classTime.add(const Duration(days: 1));
     }
@@ -357,19 +618,28 @@ class NotificationService {
     tz.TZDateTime reminderTime =
         classTime.subtract(Duration(minutes: reminderMinutes));
 
-    if (reminderTime.isBefore(now)) {
-      classTime = classTime.add(const Duration(days: 7));
-      reminderTime = classTime.subtract(Duration(minutes: reminderMinutes));
+    // If the reminder time has already passed for this week, advance by 7 days
+    while (reminderTime.isBefore(now)) {
+      reminderTime = reminderTime.add(const Duration(days: 7));
     }
 
     return reminderTime;
   }
 
   static Future<void> cancelAlarm(String courseId) async {
-    await _notificationsPlugin.cancel(courseId.hashCode);
+    final int mainId = courseId.hashCode & 0x7FFFFFFF;
+    await _notificationsPlugin.cancel(mainId);
+    try {
+      await _channel.invokeMethod('cancelAlarm', {'id': mainId});
+    } catch (_) {}
+
     // Cancel potential reminder minute hash IDs
     for (final mins in [5, 10, 15, 30, 45, 60, 120]) {
-      await _notificationsPlugin.cancel(Object.hash(courseId, mins));
+      final int remId = Object.hash(courseId, mins) & 0x7FFFFFFF;
+      await _notificationsPlugin.cancel(remId);
+      try {
+        await _channel.invokeMethod('cancelAlarm', {'id': remId});
+      } catch (_) {}
     }
   }
 }
@@ -465,17 +735,18 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
       _allCourses = courses;
       _isLoading = false;
     });
-    _rescheduleAllNotifications();
-    _syncToHomeWidget();
+    await NotificationService.requestPermissions();
+    await _rescheduleAllNotifications();
+    await _syncToHomeWidget();
   }
 
   Future<void> _saveCourses() async {
     await ScheduleStorage.saveClasses(_allCourses);
-    _rescheduleAllNotifications();
-    _syncToHomeWidget();
+    await _rescheduleAllNotifications();
+    await _syncToHomeWidget();
   }
 
-  void _rescheduleAllNotifications() async {
+  Future<void> _rescheduleAllNotifications() async {
     for (var course in _allCourses) {
       await NotificationService.scheduleCourseAlarm(course);
     }
@@ -665,9 +936,21 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.add, size: 30, color: Color(0xFF333333)),
-            onPressed: () => _showAddEditClassDialog(),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_none_rounded,
+                    size: 28, color: Color(0xFF333333)),
+                tooltip: 'Test Alarms & Notifications',
+                onPressed: () => _showNotificationTestModal(),
+              ),
+              IconButton(
+                icon: const Icon(Icons.add, size: 30, color: Color(0xFF333333)),
+                tooltip: 'Add Subject',
+                onPressed: () => _showAddEditClassDialog(),
+              ),
+            ],
           ),
         ],
       ),
@@ -1741,11 +2024,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                                         ],
                                       ),
                                     );
-                                  }),
-                                ],
-                              ),
-                            ),
-                          ],
+                                   }),
+                                 ],
+                               ),
+                             ),
+                           ],
                         ],
                       ),
                     ),
@@ -1787,7 +2070,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12)),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
                           if (titleController.text.trim().isEmpty) return;
                           final updated = CourseClass(
                             id: classToEdit?.id ??
@@ -1814,8 +2097,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             }
                           });
 
-                          _saveCourses();
-                          Navigator.pop(context);
+                          await NotificationService.scheduleCourseAlarm(updated);
+                          await _saveCourses();
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                          }
                         },
                         child: const Text(
                           'Save Class',
@@ -1834,6 +2120,428 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
           },
         ),
       );
+  }
+
+  void _showNotificationTestModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFFFFF9F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        final viewPaddingBottom = MediaQuery.of(ctx).viewPadding.bottom;
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: viewPaddingBottom + 16,
+            left: 20,
+            right: 20,
+            top: 14,
+          ),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Pull Handle
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 14),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade400,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+
+                // Title Header
+                Row(
+                  children: [
+                    const Icon(Icons.notifications_active_outlined,
+                        size: 24, color: Color(0xFF232323)),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Alarms & Notifications',
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        fontStyle: FontStyle.italic,
+                        letterSpacing: -0.3,
+                        color: Color(0xFF232323),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Card 1: Instant Alarm Sound
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFF9E79).withValues(alpha: 0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.alarm_on,
+                            size: 22, color: Color(0xFF232323)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Alarm Sound',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF232323),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Alarm sound + 3s vibration.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF232323),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .sendTestNotification(isAlarm: true);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '🔔 Alarm triggered with 3s vibration!'
+                                    : '⚠️ Failed to trigger alarm.'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Test',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Card 2: Instant Push Notification
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD6E8FA).withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.notifications_none,
+                            size: 22, color: Color(0xFF232323)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Silent Push',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF232323),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Visual banner without sound.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: const Color(0xFF232323),
+                          side: const BorderSide(color: Colors.black26),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .sendTestNotification(isAlarm: false);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '🔕 Test push notification sent!'
+                                    : '⚠️ Failed to send push.'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Test',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Card 3: 10s Background Countdown Alarm
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: const Color(0xFFC0392B).withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFFCE2E6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.timer_outlined,
+                            size: 22, color: Color(0xFFC0392B)),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '10s Test Alarm',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFFC0392B),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Rings & vibrates 3s while locked.',
+                              style: TextStyle(
+                                fontFamily: 'serif',
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFC0392B),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () async {
+                          final ok = await NotificationService
+                              .scheduleTestCountdownAlarm(seconds: 10);
+                          if (ctx.mounted) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              SnackBar(
+                                content: Text(ok
+                                    ? '⏱️ 10s alarm scheduled! Lock phone now to test.'
+                                    : '⚠️ Failed to schedule 10s alarm.'),
+                                duration: const Duration(seconds: 4),
+                              ),
+                            );
+                          }
+                        },
+                        child: const Text('Start 10s',
+                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Settings Link Tile (Opens Android Notification Settings)
+                InkWell(
+                  onTap: () async {
+                    await NotificationService.openNotificationSettings();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232323).withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.settings_outlined,
+                            size: 18, color: Color(0xFF232323)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Notification Settings',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF232323),
+                                ),
+                              ),
+                              Text(
+                                'Open app permissions in Android settings.',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 13, color: Colors.black45),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Battery Optimization Tile (Opens dialog/settings to allow background running)
+                InkWell(
+                  onTap: () async {
+                    await NotificationService.requestIgnoreBatteryOptimizations();
+                  },
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF232323).withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.battery_charging_full_outlined,
+                            size: 18, color: Color(0xFF232323)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Background Battery Settings',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF232323),
+                                ),
+                              ),
+                              Text(
+                                'Allow app to run alarms unrestricted in background.',
+                                style: TextStyle(
+                                  fontFamily: 'serif',
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 13, color: Colors.black45),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Close Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF232323),
+                      side: const BorderSide(color: Colors.black26),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('Done',
+                        style: TextStyle(
+                            fontFamily: 'serif',
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

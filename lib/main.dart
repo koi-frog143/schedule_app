@@ -254,8 +254,8 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static const String alarmChannelId = 'class_alarms_channel_v4';
-  static const String silentChannelId = 'class_silent_channel_v4';
+  static const String alarmChannelId = 'class_alarms_channel_v5';
+  static const String silentChannelId = 'class_silent_channel_v5';
 
   static const MethodChannel _channel =
       MethodChannel('com.example.schedule_app/settings');
@@ -353,6 +353,7 @@ class NotificationService {
     try {
       await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v2');
       await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v3');
+      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v4');
     } catch (_) {}
 
     // 2. Register Android Notification Channels
@@ -420,6 +421,9 @@ class NotificationService {
     }
 
     final bool canExact = await canScheduleExact();
+    if (!canExact) {
+      await openExactAlarmSettings();
+    }
 
     for (final reminder in course.reminders) {
       if (reminder.minutesBefore <= 0) continue;
@@ -434,67 +438,22 @@ class NotificationService {
         reminder.minutesBefore,
       );
 
-      final notificationDetails = NotificationDetails(
-        android: AndroidNotificationDetails(
-          reminder.isAlarm ? alarmChannelId : silentChannelId,
-          reminder.isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
-          channelDescription: reminder.isAlarm
-              ? 'Audible alarms and 3-second vibration for upcoming courses'
-              : 'Silent notifications for upcoming courses',
-          importance:
-              reminder.isAlarm ? Importance.max : Importance.defaultImportance,
-          priority: reminder.isAlarm ? Priority.max : Priority.defaultPriority,
-          playSound: reminder.isAlarm,
-          enableVibration: reminder.isAlarm,
-          vibrationPattern: reminder.isAlarm ? threeSecVibrationPattern : null,
-          audioAttributesUsage: reminder.isAlarm
-              ? AudioAttributesUsage.alarm
-              : AudioAttributesUsage.notification,
-          category: reminder.isAlarm
-              ? AndroidNotificationCategory.alarm
-              : AndroidNotificationCategory.reminder,
-          fullScreenIntent: reminder.isAlarm,
-          visibility: NotificationVisibility.public,
-        ),
-      );
-
       final String prefix = reminder.isAlarm ? 'Alarm' : 'Reminder';
-      final scheduleMode = canExact
-          ? (reminder.isAlarm
-              ? AndroidScheduleMode.alarmClock
-              : AndroidScheduleMode.exactAllowWhileIdle)
-          : AndroidScheduleMode.inexactAllowWhileIdle;
+      final String title = '[$prefix] Upcoming Class: ${course.title}';
+      final String body =
+          'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})';
 
       try {
-        await _notificationsPlugin.zonedSchedule(
-          notificationId,
-          '[$prefix] Upcoming Class: ${course.title}',
-          'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
-          reminderTime,
-          notificationDetails,
-          androidScheduleMode: scheduleMode,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-        );
+        await _channel.invokeMethod('scheduleAlarm', {
+          'id': notificationId,
+          'triggerAtMillis': reminderTime.millisecondsSinceEpoch,
+          'title': title,
+          'body': body,
+          'isAlarm': reminder.isAlarm,
+          'repeatWeekly': true,
+        });
       } catch (e) {
-        debugPrint(
-            'Error scheduling with primary mode ($scheduleMode): $e. Attempting inexact fallback...');
-        try {
-          await _notificationsPlugin.zonedSchedule(
-            notificationId,
-            '[$prefix] Upcoming Class: ${course.title}',
-            'Starts in ${reminder.minutesBefore} mins at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
-            reminderTime,
-            notificationDetails,
-            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-            uiLocalNotificationDateInterpretation:
-                UILocalNotificationDateInterpretation.absoluteTime,
-            matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-          );
-        } catch (e2) {
-          debugPrint('Fallback inexact schedule also failed: $e2');
-        }
+        debugPrint('Error scheduling native alarm: $e');
       }
 
       // If the class is today and starts within the reminder window, fire an immediate alert
@@ -517,7 +476,32 @@ class NotificationService {
                   0x7FFFFFFF),
               '[$prefix] Class Starting Soon: ${course.title}',
               'Starts at ${course.startTimeFormatted} (${course.room.isNotEmpty ? course.room : "No Room"})',
-              notificationDetails,
+              NotificationDetails(
+                android: AndroidNotificationDetails(
+                  reminder.isAlarm ? alarmChannelId : silentChannelId,
+                  reminder.isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
+                  channelDescription: reminder.isAlarm
+                      ? 'Audible alarms and 3-second vibration for upcoming courses'
+                      : 'Silent notifications for upcoming courses',
+                  importance: reminder.isAlarm
+                      ? Importance.max
+                      : Importance.defaultImportance,
+                  priority: reminder.isAlarm
+                      ? Priority.max
+                      : Priority.defaultPriority,
+                  playSound: reminder.isAlarm,
+                  enableVibration: reminder.isAlarm,
+                  vibrationPattern:
+                      reminder.isAlarm ? threeSecVibrationPattern : null,
+                  audioAttributesUsage: reminder.isAlarm
+                      ? AudioAttributesUsage.alarm
+                      : AudioAttributesUsage.notification,
+                  category: reminder.isAlarm
+                      ? AndroidNotificationCategory.alarm
+                      : AndroidNotificationCategory.reminder,
+                  visibility: NotificationVisibility.public,
+                ),
+              ),
             );
             if (reminder.isAlarm) {
               triggerVibration(durationMs: 3000);
@@ -582,50 +566,30 @@ class NotificationService {
     }
   }
 
-  /// Schedules an alarm to fire in 10 seconds. Great for testing lock-screen & background wake-up.
+  /// Schedules an alarm to fire in 10 seconds.
+  /// Wakes the phone to the lock screen (does NOT open the app) and reliably vibrates 3 seconds.
   static Future<bool> scheduleTestCountdownAlarm({int seconds = 10}) async {
     try {
-      final androidImplementation = _notificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidImplementation?.requestNotificationsPermission();
-
+      await requestPermissions();
       final canExact = await canScheduleExact();
-      final scheduleMode = canExact
-          ? AndroidScheduleMode.alarmClock
-          : AndroidScheduleMode.inexactAllowWhileIdle;
+      if (!canExact) {
+        await openExactAlarmSettings();
+      }
 
-      final scheduledTime =
-          tz.TZDateTime.now(tz.local).add(Duration(seconds: seconds));
+      final triggerTime = DateTime.now().add(Duration(seconds: seconds));
+      const int testId = 777777;
 
-      final notificationDetails = NotificationDetails(
-        android: AndroidNotificationDetails(
-          alarmChannelId,
-          'Class Alarms',
-          channelDescription:
-              'Audible alarms and 3-second vibration for upcoming courses',
-          importance: Importance.max,
-          priority: Priority.max,
-          playSound: true,
-          enableVibration: true,
-          vibrationPattern: threeSecVibrationPattern,
-          audioAttributesUsage: AudioAttributesUsage.alarm,
-          category: AndroidNotificationCategory.alarm,
-          visibility: NotificationVisibility.public,
-          fullScreenIntent: true,
-        ),
-      );
+      await cancelAlarm('test_countdown');
 
-      await _notificationsPlugin.zonedSchedule(
-        777777,
-        '[Countdown Alarm Test] 10s Alarm Triggered!',
-        'AlarmManager successfully woke up your device and sounded the alarm.',
-        scheduledTime,
-        notificationDetails,
-        androidScheduleMode: scheduleMode,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-      );
+      await _channel.invokeMethod('scheduleAlarm', {
+        'id': testId,
+        'triggerAtMillis': triggerTime.millisecondsSinceEpoch,
+        'title': '[Countdown Alarm Test] 10s Alarm Triggered!',
+        'body': 'Alarm successfully woke up your lock screen with 3s vibration.',
+        'isAlarm': true,
+        'repeatWeekly': false,
+      });
+
       return true;
     } catch (e, stack) {
       debugPrint('scheduleTestCountdownAlarm error: $e\n$stack');
@@ -663,11 +627,19 @@ class NotificationService {
   }
 
   static Future<void> cancelAlarm(String courseId) async {
-    await _notificationsPlugin.cancel(courseId.hashCode & 0x7FFFFFFF);
+    final int mainId = courseId.hashCode & 0x7FFFFFFF;
+    await _notificationsPlugin.cancel(mainId);
+    try {
+      await _channel.invokeMethod('cancelAlarm', {'id': mainId});
+    } catch (_) {}
+
     // Cancel potential reminder minute hash IDs
     for (final mins in [5, 10, 15, 30, 45, 60, 120]) {
-      await _notificationsPlugin
-          .cancel(Object.hash(courseId, mins) & 0x7FFFFFFF);
+      final int remId = Object.hash(courseId, mins) & 0x7FFFFFFF;
+      await _notificationsPlugin.cancel(remId);
+      try {
+        await _channel.invokeMethod('cancelAlarm', {'id': remId});
+      } catch (_) {}
     }
   }
 }

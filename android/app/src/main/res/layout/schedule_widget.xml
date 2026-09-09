@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:background="@drawable/widget_bg"
+    android:padding="10dp"
+    android:gravity="center_vertical">
+
+    <!-- Left Side: iPod LCD Screen -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:background="@drawable/widget_screen_bg"
+        android:padding="8dp">
+
+        <!-- LCD Status Bar -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="4dp">
+
+            <!-- Active / Inactive Dot -->
+            <ImageView
+                android:id="@+id/widget_status_dot_active"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:src="@drawable/widget_dot_green" />
+
+            <ImageView
+                android:id="@+id/widget_status_dot_inactive"
+                android:layout_width="7dp"
+                android:layout_height="7dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:visibility="gone"
+                android:src="@drawable/widget_dot_gray" />
+
+            <!-- Title Label -->
+            <TextView
+                android:id="@+id/widget_status_label"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerInParent="true"
+                android:text="NOW ACTIVE"
+                android:textSize="8sp"
+                android:textStyle="bold"
+                android:textColor="#7A7B80"
+                android:letterSpacing="0.02" />
+
+            <!-- Battery Icon -->
+            <ImageView
+                android:id="@+id/widget_battery"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:src="@drawable/ic_battery" />
+        </RelativeLayout>
+
+        <!-- Middle Row: Album Artwork / Subject Photo + Course Info -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <!-- Album Art / Profile Picture Frame -->
+            <FrameLayout
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp">
+
+                <!-- Subject Profile Picture (from gallery) -->
+                <ImageView
+                    android:id="@+id/widget_image"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:scaleType="centerCrop"
+                    android:visibility="gone" />
+
+                <!-- Default Book Icon if no picture -->
+                <ImageView
+                    android:id="@+id/widget_default_icon"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:background="@drawable/widget_default_icon_bg"
+                    android:src="@drawable/ic_book"
+                    android:padding="9dp" />
+            </FrameLayout>
+
+            <!-- Course Title & Room / Subtitle -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/widget_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="No Class"
+                    android:textSize="13sp"
+                    android:textStyle="bold"
+                    android:textColor="#1F2022"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/widget_room"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:text="Free Time"
+                    android:textSize="10sp"
+                    android:textColor="#66686E"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- Bottom Audio Scrubber Bar -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="3dp"
+            android:layout_marginTop="3dp"
+            android:background="@drawable/widget_progress_track" />
+
+        <!-- Timestamps -->
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp">
+
+            <TextView
+                android:id="@+id/widget_start_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:text="00:00"
+                android:textSize="8sp"
+                android:textColor="#55565B" />
+
+            <TextView
+                android:id="@+id/widget_end_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:text="00:00"
+                android:textSize="8sp"
+                android:textColor="#55565B" />
+        </RelativeLayout>
+    </LinearLayout>
+
+    <!-- Right Side: iPod Classic Click Wheel -->
+    <RelativeLayout
+        android:id="@+id/widget_click_wheel"
+        android:layout_width="88dp"
+        android:layout_height="88dp"
+        android:layout_marginStart="10dp"
+        android:layout_gravity="center_vertical"
+        android:background="@drawable/widget_wheel_bg">
+
+        <!-- MENU -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="5dp"
+            android:text="MENU"
+            android:textSize="7sp"
+            android:textStyle="bold"
+            android:textColor="#7A7B80" />
+
+        <!-- Rewind -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="6dp"
+            android:text="◀◀"
+            android:textSize="8sp"
+            android:textColor="#7A7B80" />
+
+        <!-- Forward -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:layout_centerVertical="true"
+            android:layout_marginEnd="6dp"
+            android:text="▶▶"
+            android:textSize="8sp"
+            android:textColor="#7A7B80" />
+
+        <!-- Play / Pause -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginBottom="5dp"
+            android:text="▶❚❚"
+            android:textSize="8sp"
+            android:textColor="#7A7B80" />
+
+        <!-- Center Button -->
+        <View
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_centerInParent="true"
+            android:background="@drawable/widget_wheel_center" />
+    </RelativeLayout>
+</LinearLayout>

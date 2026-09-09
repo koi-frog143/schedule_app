@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -252,8 +254,53 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  static const String alarmChannelId = 'class_alarms_channel_v2';
-  static const String silentChannelId = 'class_silent_channel_v2';
+  static const String alarmChannelId = 'class_alarms_channel_v3';
+  static const String silentChannelId = 'class_silent_channel_v3';
+
+  static const MethodChannel _channel =
+      MethodChannel('com.example.schedule_app/settings');
+
+  static final Int64List threeSecVibrationPattern =
+      Int64List.fromList([0, 3000]);
+
+  /// Triggers a 3-second physical vibration on the device
+  static Future<void> triggerVibration({int durationMs = 3000}) async {
+    try {
+      await _channel.invokeMethod('vibrate', {'duration': durationMs});
+    } catch (e) {
+      debugPrint('Error triggering physical vibration: $e');
+    }
+  }
+
+  /// Opens Android app notification settings directly
+  static Future<void> openNotificationSettings() async {
+    try {
+      await _channel.invokeMethod('openNotificationSettings');
+    } catch (e) {
+      debugPrint('Error opening notification settings via platform channel: $e');
+      try {
+        final androidImplementation = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidImplementation?.requestExactAlarmsPermission();
+      } catch (_) {}
+    }
+  }
+
+  /// Opens Android system settings for "Alarms & reminders" special app access
+  static Future<void> openExactAlarmSettings() async {
+    try {
+      await _channel.invokeMethod('openExactAlarmSettings');
+    } catch (e) {
+      debugPrint('Error opening exact alarm settings via platform channel: $e');
+      try {
+        final androidImplementation = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin>();
+        await androidImplementation?.requestExactAlarmsPermission();
+      } catch (_) {}
+    }
+  }
 
   static Future<void> init() async {
     // 1. Initialize Timezones using actual device local timezone
@@ -277,13 +324,14 @@ class NotificationService {
     );
 
     // 2. Register Android Notification Channels
-    const alarmChannel = AndroidNotificationChannel(
+    final alarmChannel = AndroidNotificationChannel(
       alarmChannelId,
       'Class Alarms',
-      description: 'Audible alarms and high-priority reminders for upcoming classes',
+      description: 'Audible alarms and 3-second vibration for upcoming classes',
       importance: Importance.max,
       playSound: true,
       enableVibration: true,
+      vibrationPattern: threeSecVibrationPattern,
       audioAttributesUsage: AudioAttributesUsage.alarm,
     );
     const silentChannel = AndroidNotificationChannel(
@@ -334,18 +382,6 @@ class NotificationService {
     }
   }
 
-  /// Opens Android system settings for "Alarms & reminders" special app access
-  static Future<void> openExactAlarmSettings() async {
-    try {
-      final androidImplementation = _notificationsPlugin
-          .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
-      await androidImplementation?.requestExactAlarmsPermission();
-    } catch (e) {
-      debugPrint('Error opening exact alarm settings: $e');
-    }
-  }
-
   static Future<void> scheduleCourseAlarm(CourseClass course) async {
     // Cancel any existing alarms/notifications for this course
     await cancelAlarm(course.id);
@@ -373,13 +409,14 @@ class NotificationService {
           reminder.isAlarm ? alarmChannelId : silentChannelId,
           reminder.isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
           channelDescription: reminder.isAlarm
-              ? 'Audible alarms and high-priority reminders for upcoming courses'
+              ? 'Audible alarms and 3-second vibration for upcoming courses'
               : 'Silent notifications for upcoming courses',
           importance:
               reminder.isAlarm ? Importance.max : Importance.defaultImportance,
           priority: reminder.isAlarm ? Priority.max : Priority.defaultPriority,
           playSound: reminder.isAlarm,
           enableVibration: reminder.isAlarm,
+          vibrationPattern: reminder.isAlarm ? threeSecVibrationPattern : null,
           audioAttributesUsage: reminder.isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
@@ -441,18 +478,24 @@ class NotificationService {
               AndroidFlutterLocalNotificationsPlugin>();
       await androidImplementation?.requestNotificationsPermission();
 
+      if (isAlarm) {
+        // Immediately trigger 3-second vibration on device hardware
+        triggerVibration(durationMs: 3000);
+      }
+
       final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
           isAlarm ? alarmChannelId : silentChannelId,
           isAlarm ? 'Class Alarms' : 'Silent Class Reminders',
           channelDescription: isAlarm
-              ? 'Audible alarms and high-priority reminders for upcoming courses'
+              ? 'Audible alarms and 3-second vibration for upcoming courses'
               : 'Silent notifications for upcoming courses',
           importance:
               isAlarm ? Importance.max : Importance.defaultImportance,
           priority: isAlarm ? Priority.max : Priority.defaultPriority,
           playSound: isAlarm,
           enableVibration: isAlarm,
+          vibrationPattern: isAlarm ? threeSecVibrationPattern : null,
           audioAttributesUsage: isAlarm
               ? AudioAttributesUsage.alarm
               : AudioAttributesUsage.notification,
@@ -469,7 +512,7 @@ class NotificationService {
             ? '[Alarm Test] Class Alarm Sound'
             : '[Push Test] Silent Push Notification',
         isAlarm
-            ? 'System alarm is connected! Sound, vibration, and alarm channel verified.'
+            ? 'Alarm verified! Playing sound and 3-second vibration.'
             : 'Push notification is connected! Visual heads-up banner verified.',
         notificationDetails,
       );
@@ -496,16 +539,17 @@ class NotificationService {
       final scheduledTime =
           tz.TZDateTime.now(tz.local).add(Duration(seconds: seconds));
 
-      final notificationDetails = const NotificationDetails(
+      final notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
           alarmChannelId,
           'Class Alarms',
           channelDescription:
-              'Audible alarms and high-priority reminders for upcoming courses',
+              'Audible alarms and 3-second vibration for upcoming courses',
           importance: Importance.max,
           priority: Priority.max,
           playSound: true,
           enableVibration: true,
+          vibrationPattern: threeSecVibrationPattern,
           audioAttributesUsage: AudioAttributesUsage.alarm,
           category: AndroidNotificationCategory.alarm,
           visibility: NotificationVisibility.public,
@@ -2096,12 +2140,12 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                 Row(
                   children: [
                     const Icon(Icons.notifications_active_outlined,
-                        size: 26, color: Color(0xFF232323)),
+                        size: 24, color: Color(0xFF232323)),
                     const SizedBox(width: 8),
                     const Text(
                       'Alarms & Notifications',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         fontStyle: FontStyle.italic,
                         letterSpacing: -0.3,
@@ -2110,21 +2154,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Verify system alarms, notification channels, and background wake-up.',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 13,
-                    fontStyle: FontStyle.italic,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
                 // Card 1: Instant Alarm Sound
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -2133,13 +2167,13 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFF9E79).withValues(alpha: 0.2),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.alarm_on,
-                            size: 24, color: Color(0xFF232323)),
+                            size: 22, color: Color(0xFF232323)),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2147,7 +2181,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Instant Alarm Sound',
+                              'Alarm Sound',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 14,
@@ -2157,7 +2191,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Fires audible alarm stream sound and vibration immediately.',
+                              'Alarm sound + 3s vibration.',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 11.5,
@@ -2173,7 +2207,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           backgroundColor: const Color(0xFF232323),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                              horizontal: 14, vertical: 8),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -2185,8 +2219,8 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
                                 content: Text(ok
-                                    ? '🔔 Alarm triggered! Check sound and status bar.'
-                                    : '⚠️ Failed to trigger alarm. Check permissions.'),
+                                    ? '🔔 Alarm triggered with 3s vibration!'
+                                    : '⚠️ Failed to trigger alarm.'),
                                 duration: const Duration(seconds: 2),
                               ),
                             );
@@ -2198,11 +2232,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
 
                 // Card 2: Instant Push Notification
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -2211,13 +2245,13 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
                           color: const Color(0xFFD6E8FA).withValues(alpha: 0.5),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.notifications_none,
-                            size: 24, color: Color(0xFF232323)),
+                            size: 22, color: Color(0xFF232323)),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2225,7 +2259,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Silent Push Banner',
+                              'Silent Push',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 14,
@@ -2235,7 +2269,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Fires visual heads-up notification banner without alarm sound.',
+                              'Visual banner without sound.',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 11.5,
@@ -2252,7 +2286,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           foregroundColor: const Color(0xFF232323),
                           side: const BorderSide(color: Colors.black26),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                              horizontal: 14, vertical: 8),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -2264,8 +2298,8 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
                                 content: Text(ok
-                                    ? '🔕 Test push notification sent to status bar!'
-                                    : '⚠️ Failed to send push notification.'),
+                                    ? '🔕 Test push notification sent!'
+                                    : '⚠️ Failed to send push.'),
                                 duration: const Duration(seconds: 2),
                               ),
                             );
@@ -2277,11 +2311,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
 
                 // Card 3: 10s Background Countdown Alarm
                 Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -2291,13 +2325,13 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   child: Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.all(8),
                         decoration: const BoxDecoration(
                           color: Color(0xFFFCE2E6),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.timer_outlined,
-                            size: 24, color: Color(0xFFC0392B)),
+                            size: 22, color: Color(0xFFC0392B)),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2305,7 +2339,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              '10s Countdown Alarm',
+                              '10s Test Alarm',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 14,
@@ -2315,7 +2349,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Tap, then lock phone or leave app to test lock-screen wake-up.',
+                              'Rings & vibrates 3s while locked.',
                               style: TextStyle(
                                 fontFamily: 'serif',
                                 fontSize: 11.5,
@@ -2343,7 +2377,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
                                 content: Text(ok
-                                    ? '⏱️ Alarm scheduled in 10 seconds! Lock your phone now to test.'
+                                    ? '⏱️ 10s alarm scheduled! Lock phone now to test.'
                                     : '⚠️ Failed to schedule 10s alarm.'),
                                 duration: const Duration(seconds: 4),
                               ),
@@ -2356,12 +2390,12 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
 
-                // Settings Link Tile
+                // Settings Link Tile (Opens Android Notification Settings)
                 InkWell(
                   onTap: () async {
-                    await NotificationService.openExactAlarmSettings();
+                    await NotificationService.openNotificationSettings();
                   },
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
@@ -2374,15 +2408,15 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.settings_suggest_outlined,
-                            size: 20, color: Color(0xFF232323)),
+                        const Icon(Icons.settings_outlined,
+                            size: 18, color: Color(0xFF232323)),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Android "Alarms & Reminders" Settings',
+                                'Notification Settings',
                                 style: TextStyle(
                                   fontFamily: 'serif',
                                   fontSize: 12.5,
@@ -2391,7 +2425,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                                 ),
                               ),
                               Text(
-                                'Tap to open special app access settings on your device',
+                                'Open app permissions in Android settings.',
                                 style: TextStyle(
                                   fontFamily: 'serif',
                                   fontSize: 11,
@@ -2402,17 +2436,17 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           ),
                         ),
                         const Icon(Icons.arrow_forward_ios_rounded,
-                            size: 14, color: Colors.black45),
+                            size: 13, color: Colors.black45),
                       ],
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 14),
 
                 // Close Button
                 SizedBox(
                   width: double.infinity,
-                  height: 46,
+                  height: 44,
                   child: OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF232323),
@@ -2425,7 +2459,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     child: const Text('Done',
                         style: TextStyle(
                             fontFamily: 'serif',
-                            fontSize: 15,
+                            fontSize: 14,
                             fontWeight: FontWeight.bold)),
                   ),
                 ),

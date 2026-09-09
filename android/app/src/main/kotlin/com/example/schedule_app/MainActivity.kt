@@ -112,21 +112,7 @@ class MainActivity : FlutterActivity() {
                 }
                 "vibrate" -> {
                     try {
-                        val timings = longArrayOf(0, 1000, 200, 1000, 200, 1000)
-                        val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                            val vibrator = vibratorManager?.defaultVibrator ?: @Suppress("DEPRECATION") (getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-                            vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
-                        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                            vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1))
-                        } else {
-                            @Suppress("DEPRECATION")
-                            val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                            @Suppress("DEPRECATION")
-                            vibrator?.vibrate(timings, -1)
-                        }
+                        VibrationFailsafe.triggerVibrationWithFailsafe(this)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("VIBRATE_ERROR", e.message, null)

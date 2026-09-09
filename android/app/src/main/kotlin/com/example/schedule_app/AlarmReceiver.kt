@@ -43,35 +43,9 @@ class AlarmReceiver : BroadcastReceiver() {
             e.printStackTrace()
         }
 
-        // 2. Direct hardware vibration for 3 seconds (guaranteed 1s-200ms-1s-200ms-1s pulse rhythm)
+        // 2. Hardware vibration with failsafe checking & retry loop
         if (isAlarm) {
-            try {
-                val timings = longArrayOf(0, 1000, 200, 1000, 200, 1000)
-                val amplitudes = intArrayOf(0, 255, 0, 255, 0, 255)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
-                    val vibrator = vibratorManager?.defaultVibrator
-                        ?: @Suppress("DEPRECATION") (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-                    val attributes = VibrationAttributes.Builder()
-                        .setUsage(VibrationAttributes.USAGE_ALARM)
-                        .build()
-                    vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1), attributes)
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    val audioAttributes = AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                        .build()
-                    vibrator?.vibrate(VibrationEffect.createWaveform(timings, amplitudes, -1), audioAttributes)
-                } else {
-                    @Suppress("DEPRECATION")
-                    val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-                    @Suppress("DEPRECATION")
-                    vibrator?.vibrate(timings, -1)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            VibrationFailsafe.triggerVibrationWithFailsafe(context)
         }
 
         // 3. Post notification to lock screen

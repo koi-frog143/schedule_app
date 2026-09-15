@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/todo_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/todo_widget_bg"
+    android:padding="6dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/todo_card_bg"
+        android:orientation="vertical"
+        android:paddingStart="10dp"
+        android:paddingTop="7dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="7dp">
+
+        <RelativeLayout
+            android:layout_width="match_parent"
+            android:layout_height="34dp">
+
+            <TextView
+                android:layout_width="72dp"
+                android:layout_height="27dp"
+                android:layout_alignParentStart="true"
+                android:layout_centerVertical="true"
+                android:background="@drawable/todo_label_bg"
+                android:fontFamily="serif"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:text="To-do"
+                android:textColor="#2F2F2F"
+                android:textSize="16sp"
+                android:textStyle="italic" />
+
+            <TextView
+                android:id="@+id/todo_count"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_alignParentEnd="true"
+                android:layout_centerVertical="true"
+                android:fontFamily="sans"
+                android:includeFontPadding="false"
+                android:text="4"
+                android:textColor="#2E2E2E"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+        </RelativeLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_1"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_1"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_1"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_1"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="Position Paper"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_2"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_2"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_2"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_2"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="Code Game"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_3"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_3"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_3"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="Design Poster"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_4"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_4"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_4"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_4"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="Laboratory Report"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_5"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_5"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_5"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_5"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="To-do item"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_6"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_6"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_6"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_6"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="To-do item"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_7"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_7"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_7"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_7"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="To-do item"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+
+                <RelativeLayout
+                    android:id="@+id/todo_row_8"
+                    android:layout_width="match_parent"
+                    android:layout_height="27dp"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/todo_checkbox_8"
+                        android:layout_width="19dp"
+                        android:layout_height="19dp"
+                        android:layout_alignParentStart="true"
+                        android:layout_centerVertical="true"
+                        android:contentDescription="@null"
+                        android:src="@drawable/todo_checkbox_unchecked" />
+
+                    <TextView
+                        android:id="@+id/todo_text_8"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:layout_marginStart="8dp"
+                        android:layout_toEndOf="@id/todo_checkbox_8"
+                        android:ellipsize="end"
+                        android:fontFamily="sans"
+                        android:gravity="center_vertical"
+                        android:maxLines="1"
+                        android:text="To-do item"
+                        android:textColor="#303030"
+                        android:textSize="12sp" />
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:layout_alignParentBottom="true"
+                        android:background="@drawable/todo_rule_blue"
+                        android:contentDescription="@null" />
+                </RelativeLayout>
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="25dp"
+                android:background="@drawable/todo_rule_pink"
+                android:contentDescription="@null" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>

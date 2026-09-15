@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="todo_widget_four_name">To-do List (4)</string>
+    <string name="todo_widget_eight_name">To-do List (8)</string>
+    <string name="todo_widget_description">Your Folderly-style to-do list</string>
+</resources>

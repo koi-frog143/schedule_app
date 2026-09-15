@@ -21,6 +21,28 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/schedule_widget_info" />
         </receiver>
+        <receiver
+            android:name=".TodoWidgetFourProvider"
+            android:exported="true"
+            android:label="@string/todo_widget_four_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/todo_widget_four_info" />
+        </receiver>
+        <receiver
+            android:name=".TodoWidgetEightProvider"
+            android:exported="true"
+            android:label="@string/todo_widget_eight_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/todo_widget_eight_info" />
+        </receiver>
         <activity
             android:name=".MainActivity"
             android:exported="true"

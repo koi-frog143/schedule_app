@@ -28,20 +28,28 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
         appWidgetIds.forEach { widgetId ->
             val views = RemoteViews(context.packageName, R.layout.schedule_widget).apply {
                 val title = widgetData.getString("widget_title", "No Class") ?: "No Class"
+                val instructor = widgetData.getString("widget_instructor", "") ?: ""
                 val room = widgetData.getString("widget_room", "") ?: ""
                 val timeRange = widgetData.getString("widget_time", "Free Time") ?: "Free Time"
                 val startTime = widgetData.getString("widget_start_time", "00:00") ?: "00:00"
                 val endTime = widgetData.getString("widget_end_time", "00:00") ?: "00:00"
                 val imagePath = widgetData.getString("widget_image_path", null)
                 val isActive = widgetData.getBoolean("widget_is_active", false)
+                val progress = widgetData.getInt("widget_progress", 0).coerceIn(0, 100)
+
+                val subtitle = when {
+                    title == "No Class" -> "Free Time"
+                    instructor.isNotEmpty() && room.isNotEmpty() -> "$instructor • $room"
+                    instructor.isNotEmpty() -> instructor
+                    room.isNotEmpty() -> room
+                    else -> timeRange
+                }
 
                 setTextViewText(R.id.widget_title, title)
-                setTextViewText(
-                    R.id.widget_room,
-                    if (room.isNotEmpty()) room else timeRange
-                )
+                setTextViewText(R.id.widget_room, subtitle)
                 setTextViewText(R.id.widget_start_time, startTime)
                 setTextViewText(R.id.widget_end_time, endTime)
+                setProgressBar(R.id.widget_progress, 100, progress, false)
 
                 // Status indicator
                 setViewVisibility(
@@ -52,10 +60,6 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                     R.id.widget_status_dot_inactive,
                     if (isActive) View.GONE else View.VISIBLE
                 )
-                setTextViewText(
-                    R.id.widget_status_label,
-                    if (isActive) "NOW ACTIVE" else "UPCOMING"
-                )
 
                 // Subject profile picture from gallery
                 var imageLoaded = false
@@ -63,12 +67,13 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
                     try {
                         val file = File(imagePath)
                         if (file.exists()) {
-                            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                            val bitmap = decodeScaledBitmap(file.absolutePath)
                             if (bitmap != null) {
-                                val rounded = getRoundedCornerBitmap(bitmap, 20f)
+                                val rounded = getRoundedCornerBitmap(bitmap, 12f)
                                 setImageViewBitmap(R.id.widget_image, rounded)
                                 setViewVisibility(R.id.widget_image, View.VISIBLE)
                                 setViewVisibility(R.id.widget_default_icon, View.GONE)
+                                bitmap.recycle()
                                 imageLoaded = true
                             }
                         }
@@ -98,15 +103,38 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
         }
     }
 
+    private fun decodeScaledBitmap(path: String): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+        var sampleSize = 1
+        while (bounds.outWidth / sampleSize > MAX_WIDGET_IMAGE_SIZE * 2 ||
+            bounds.outHeight / sampleSize > MAX_WIDGET_IMAGE_SIZE * 2
+        ) {
+            sampleSize *= 2
+        }
+
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = sampleSize
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeFile(path, options)
+    }
+
     private fun getRoundedCornerBitmap(bitmap: Bitmap, cornerRadius: Float): Bitmap {
-        val size = Math.min(bitmap.width, bitmap.height)
-        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val cropSize = minOf(bitmap.width, bitmap.height)
+        val output = Bitmap.createBitmap(
+            MAX_WIDGET_IMAGE_SIZE,
+            MAX_WIDGET_IMAGE_SIZE,
+            Bitmap.Config.ARGB_8888
+        )
         val canvas = Canvas(output)
         val paint = Paint().apply {
             isAntiAlias = true
             color = -0x1
         }
-        val rect = Rect(0, 0, size, size)
+        val rect = Rect(0, 0, MAX_WIDGET_IMAGE_SIZE, MAX_WIDGET_IMAGE_SIZE)
         val rectF = RectF(rect)
 
         canvas.drawRoundRect(rectF, cornerRadius, cornerRadius, paint)
@@ -114,13 +142,17 @@ class ScheduleWidgetProvider : HomeWidgetProvider() {
 
         val srcRect = if (bitmap.width >= bitmap.height) {
             val startX = (bitmap.width - bitmap.height) / 2
-            Rect(startX, 0, startX + size, size)
+            Rect(startX, 0, startX + cropSize, cropSize)
         } else {
             val startY = (bitmap.height - bitmap.width) / 2
-            Rect(0, startY, size, startY + size)
+            Rect(0, startY, cropSize, startY + cropSize)
         }
 
         canvas.drawBitmap(bitmap, srcRect, rect, paint)
         return output
+    }
+
+    companion object {
+        private const val MAX_WIDGET_IMAGE_SIZE = 160
     }
 }

@@ -8,4 +8,6 @@
     android:minResizeHeight="90dp"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
-    android:initialLayout="@layout/schedule_widget" />
+    android:initialLayout="@layout/schedule_widget"
+    android:previewLayout="@layout/schedule_widget"
+    android:widgetCategory="home_screen" />

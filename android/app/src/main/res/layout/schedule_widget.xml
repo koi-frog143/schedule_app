@@ -3,222 +3,209 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="horizontal"
     android:background="@drawable/widget_bg"
-    android:padding="10dp"
-    android:gravity="center_vertical">
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:padding="11dp">
 
-    <!-- Left Side: iPod LCD Screen -->
+    <!-- Folderly-style LCD screen -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
-        android:orientation="vertical"
         android:background="@drawable/widget_screen_bg"
-        android:padding="8dp">
+        android:orientation="vertical"
+        android:padding="7dp">
 
-        <!-- LCD Status Bar -->
         <RelativeLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="4dp">
+            android:layout_height="16dp"
+            android:background="@drawable/widget_status_bar_bg">
 
-            <!-- Active / Inactive Dot -->
             <ImageView
                 android:id="@+id/widget_status_dot_active"
-                android:layout_width="7dp"
-                android:layout_height="7dp"
-                android:layout_alignParentStart="true"
+                android:layout_width="13dp"
+                android:layout_height="11dp"
                 android:layout_centerVertical="true"
-                android:src="@drawable/widget_dot_green" />
+                android:layout_marginEnd="5dp"
+                android:layout_toStartOf="@id/widget_battery"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_widget_activity_active" />
 
             <ImageView
                 android:id="@+id/widget_status_dot_inactive"
-                android:layout_width="7dp"
-                android:layout_height="7dp"
-                android:layout_alignParentStart="true"
+                android:layout_width="13dp"
+                android:layout_height="11dp"
                 android:layout_centerVertical="true"
-                android:visibility="gone"
-                android:src="@drawable/widget_dot_gray" />
+                android:layout_marginEnd="5dp"
+                android:layout_toStartOf="@id/widget_battery"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_widget_activity_inactive" />
 
-            <!-- Title Label -->
-            <TextView
-                android:id="@+id/widget_status_label"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_centerInParent="true"
-                android:text="NOW ACTIVE"
-                android:textSize="8sp"
-                android:textStyle="bold"
-                android:textColor="#7A7B80"
-                android:letterSpacing="0.02" />
-
-            <!-- Battery Icon -->
             <ImageView
                 android:id="@+id/widget_battery"
-                android:layout_width="12dp"
-                android:layout_height="12dp"
+                android:layout_width="22dp"
+                android:layout_height="11dp"
                 android:layout_alignParentEnd="true"
                 android:layout_centerVertical="true"
+                android:contentDescription="@null"
                 android:src="@drawable/ic_battery" />
         </RelativeLayout>
 
-        <!-- Middle Row: Album Artwork / Subject Photo + Course Info -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
+            android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:paddingStart="5dp"
+            android:paddingEnd="4dp">
 
-            <!-- Album Art / Profile Picture Frame -->
             <FrameLayout
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:layout_marginEnd="8dp">
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_marginEnd="9dp">
 
-                <!-- Subject Profile Picture (from gallery) -->
                 <ImageView
                     android:id="@+id/widget_image"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:contentDescription="@null"
                     android:scaleType="centerCrop"
                     android:visibility="gone" />
 
-                <!-- Default Book Icon if no picture -->
                 <ImageView
                     android:id="@+id/widget_default_icon"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:background="@drawable/widget_default_icon_bg"
-                    android:src="@drawable/ic_book"
-                    android:padding="9dp" />
+                    android:contentDescription="@null" />
             </FrameLayout>
 
-            <!-- Course Title & Room / Subtitle -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="center_vertical">
+                android:gravity="center_vertical"
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/widget_title"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="No Class"
-                    android:textSize="13sp"
-                    android:textStyle="bold"
-                    android:textColor="#1F2022"
+                    android:ellipsize="end"
                     android:maxLines="1"
-                    android:ellipsize="end" />
+                    android:text="No class"
+                    android:textColor="#171717"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/widget_room"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="1dp"
-                    android:text="Free Time"
-                    android:textSize="10sp"
-                    android:textColor="#66686E"
+                    android:layout_marginTop="2dp"
+                    android:ellipsize="end"
                     android:maxLines="1"
-                    android:ellipsize="end" />
+                    android:text="Free Time"
+                    android:textColor="#87878B"
+                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- Bottom Audio Scrubber Bar -->
-        <View
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="3dp"
-            android:layout_marginTop="3dp"
-            android:background="@drawable/widget_progress_track" />
-
-        <!-- Timestamps -->
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp">
+            android:layout_height="16dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp">
 
             <TextView
                 android:id="@+id/widget_start_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_alignParentStart="true"
                 android:text="00:00"
-                android:textSize="8sp"
-                android:textColor="#55565B" />
+                android:textColor="#77777B"
+                android:textSize="9sp" />
+
+            <ProgressBar
+                android:id="@+id/widget_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="0dp"
+                android:layout_height="3dp"
+                android:layout_marginStart="6dp"
+                android:layout_marginEnd="6dp"
+                android:layout_weight="1"
+                android:indeterminate="false"
+                android:max="100"
+                android:progress="0"
+                android:progressBackgroundTint="#D0D0D2"
+                android:progressTint="#9C9C9F" />
 
             <TextView
                 android:id="@+id/widget_end_time"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_alignParentEnd="true"
                 android:text="00:00"
-                android:textSize="8sp"
-                android:textColor="#55565B" />
-        </RelativeLayout>
+                android:textColor="#77777B"
+                android:textSize="9sp" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- Right Side: iPod Classic Click Wheel -->
+    <!-- Folderly click wheel -->
     <RelativeLayout
         android:id="@+id/widget_click_wheel"
-        android:layout_width="88dp"
-        android:layout_height="88dp"
-        android:layout_marginStart="10dp"
+        android:layout_width="92dp"
+        android:layout_height="92dp"
         android:layout_gravity="center_vertical"
+        android:layout_marginStart="12dp"
         android:background="@drawable/widget_wheel_bg">
 
-        <!-- MENU -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_alignParentTop="true"
             android:layout_centerHorizontal="true"
-            android:layout_marginTop="5dp"
-            android:text="MENU"
-            android:textSize="7sp"
-            android:textStyle="bold"
-            android:textColor="#7A7B80" />
+            android:layout_marginTop="9dp"
+            android:text="SCHEDULE"
+            android:textColor="#88888C"
+            android:textSize="8sp"
+            android:textStyle="bold" />
 
-        <!-- Rewind -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="16dp"
             android:layout_alignParentStart="true"
             android:layout_centerVertical="true"
-            android:layout_marginStart="6dp"
-            android:text="◀◀"
-            android:textSize="8sp"
-            android:textColor="#7A7B80" />
+            android:layout_marginStart="8dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_widget_rewind" />
 
-        <!-- Forward -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="16dp"
             android:layout_alignParentEnd="true"
             android:layout_centerVertical="true"
-            android:layout_marginEnd="6dp"
-            android:text="▶▶"
-            android:textSize="8sp"
-            android:textColor="#7A7B80" />
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_widget_forward" />
 
-        <!-- Play / Pause -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+        <ImageView
+            android:layout_width="22dp"
+            android:layout_height="16dp"
             android:layout_alignParentBottom="true"
             android:layout_centerHorizontal="true"
-            android:layout_marginBottom="5dp"
-            android:text="▶❚❚"
-            android:textSize="8sp"
-            android:textColor="#7A7B80" />
+            android:layout_marginBottom="8dp"
+            android:contentDescription="@null"
+            android:src="@drawable/ic_widget_play_pause" />
 
-        <!-- Center Button -->
-        <View
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+        <!-- ImageView is RemoteViews-safe; a raw View here crashes widget inflation. -->
+        <ImageView
+            android:layout_width="35dp"
+            android:layout_height="35dp"
             android:layout_centerInParent="true"
-            android:background="@drawable/widget_wheel_center" />
+            android:background="@drawable/widget_wheel_center"
+            android:contentDescription="@null" />
     </RelativeLayout>
 </LinearLayout>

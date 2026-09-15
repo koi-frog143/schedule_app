@@ -13,6 +13,7 @@ void main() {
     final course = CourseClass(
       id: 'test_1',
       title: 'Physics',
+      instructor: 'Dr. Maria Santos',
       room: 'Room 101',
       dayOfWeek: 1,
       startHour: 9,
@@ -20,16 +21,24 @@ void main() {
       endHour: 10,
       endMinute: 30,
       colorValue: 0xFFD6E8FA,
-      imagePath: '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg',
+      imagePath:
+          '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg',
     );
 
     final json = course.toJson();
-    expect(json['imagePath'], '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg');
+    expect(
+      json['imagePath'],
+      '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg',
+    );
 
     final deserialized = CourseClass.fromJson(json);
     expect(deserialized.id, 'test_1');
     expect(deserialized.title, 'Physics');
-    expect(deserialized.imagePath, '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg');
+    expect(deserialized.instructor, 'Dr. Maria Santos');
+    expect(
+      deserialized.imagePath,
+      '/data/user/0/com.example.schedule_app/app_flutter/subject_images/subj_123.jpg',
+    );
     expect(deserialized.startTimeFormatted, '9:00 AM');
     expect(deserialized.endTimeFormatted, '10:30 AM');
   });
@@ -52,6 +61,7 @@ void main() {
 
     final deserialized = CourseClass.fromJson(json);
     expect(deserialized.id, 'test_2');
+    expect(deserialized.instructor, isEmpty);
     expect(deserialized.imagePath, isNull);
     expect(deserialized.reminderMinutes, 15);
     expect(deserialized.playAlarmSound, isTrue);

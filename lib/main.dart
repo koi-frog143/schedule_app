@@ -17,12 +17,10 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 // ==========================================
 class ClassReminder {
   final int minutesBefore;
-  final bool isAlarm; // true = audible alarm sound + vibration, false = silent push notification
+  final bool
+  isAlarm; // true = audible alarm sound + vibration, false = silent push notification
 
-  const ClassReminder({
-    required this.minutesBefore,
-    this.isAlarm = true,
-  });
+  const ClassReminder({required this.minutesBefore, this.isAlarm = true});
 
   String get label {
     if (minutesBefore >= 60) {
@@ -58,6 +56,7 @@ class ClassReminder {
 class CourseClass {
   final String id;
   final String title;
+  final String instructor;
   final String room;
   final int dayOfWeek; // 1 = Mon, 2 = Tue, ..., 7 = Sun
   final int startHour;
@@ -71,6 +70,7 @@ class CourseClass {
   CourseClass({
     required this.id,
     required this.title,
+    this.instructor = '',
     required this.room,
     required this.dayOfWeek,
     required this.startHour,
@@ -82,12 +82,20 @@ class CourseClass {
     List<ClassReminder>? reminders,
     int? reminderMinutes,
     bool? playAlarmSound,
-  }) : reminders = reminders ??
-            (reminderMinutes != null && reminderMinutes > 0
-                ? [ClassReminder(minutesBefore: reminderMinutes, isAlarm: playAlarmSound ?? true)]
-                : (reminderMinutes == 0
-                    ? []
-                    : [const ClassReminder(minutesBefore: 15, isAlarm: true)]));
+  }) : reminders =
+           reminders ??
+           (reminderMinutes != null && reminderMinutes > 0
+               ? [
+                   ClassReminder(
+                     minutesBefore: reminderMinutes,
+                     isAlarm: playAlarmSound ?? true,
+                   ),
+                 ]
+               : (reminderMinutes == 0
+                     ? []
+                     : [
+                         const ClassReminder(minutesBefore: 15, isAlarm: true),
+                       ]));
 
   // Backward compatibility getters
   int get reminderMinutes =>
@@ -98,6 +106,7 @@ class CourseClass {
   Map<String, dynamic> toJson() => {
     'id': id,
     'title': title,
+    'instructor': instructor,
     'room': room,
     'dayOfWeek': dayOfWeek,
     'startHour': startHour,
@@ -121,7 +130,9 @@ class CourseClass {
       final int oldMins = json['reminderMinutes'] as int;
       final bool oldAlarm = json['playAlarmSound'] as bool? ?? true;
       if (oldMins > 0) {
-        parsedReminders = [ClassReminder(minutesBefore: oldMins, isAlarm: oldAlarm)];
+        parsedReminders = [
+          ClassReminder(minutesBefore: oldMins, isAlarm: oldAlarm),
+        ];
       }
     } else {
       parsedReminders = [const ClassReminder(minutesBefore: 15, isAlarm: true)];
@@ -130,6 +141,7 @@ class CourseClass {
     return CourseClass(
       id: json['id'],
       title: json['title'],
+      instructor: json['instructor'] ?? '',
       room: json['room'] ?? '',
       dayOfWeek: json['dayOfWeek'],
       startHour: json['startHour'],
@@ -248,6 +260,621 @@ class ScheduleStorage {
 }
 
 // ==========================================
+// 3. TO-DO MODEL + LOCAL STORAGE
+// ==========================================
+enum TodoFilter { ongoing, all, missed, completed }
+
+class TodoTask {
+  final String id;
+  final String title;
+  final String subject;
+  final DateTime dueAt;
+  final bool completed;
+  final int iconCodePoint;
+  final int iconColorValue;
+
+  const TodoTask({
+    required this.id,
+    required this.title,
+    required this.subject,
+    required this.dueAt,
+    this.completed = false,
+    this.iconCodePoint = 0xe873, // Icons.description_outlined
+    this.iconColorValue = 0xFFFFD966,
+  });
+
+  bool get isMissed => !completed && dueAt.isBefore(DateTime.now());
+  bool get isOngoing => !completed && !isMissed;
+
+  TodoTask copyWith({
+    String? id,
+    String? title,
+    String? subject,
+    DateTime? dueAt,
+    bool? completed,
+    int? iconCodePoint,
+    int? iconColorValue,
+  }) {
+    return TodoTask(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      subject: subject ?? this.subject,
+      dueAt: dueAt ?? this.dueAt,
+      completed: completed ?? this.completed,
+      iconCodePoint: iconCodePoint ?? this.iconCodePoint,
+      iconColorValue: iconColorValue ?? this.iconColorValue,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'subject': subject,
+    'dueAt': dueAt.toIso8601String(),
+    'completed': completed,
+    'iconCodePoint': iconCodePoint,
+    'iconColorValue': iconColorValue,
+  };
+
+  factory TodoTask.fromJson(Map<String, dynamic> json) => TodoTask(
+    id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+    title: json['title'] ?? '',
+    subject: json['subject'] ?? '',
+    dueAt: DateTime.tryParse(json['dueAt'] ?? '') ?? DateTime.now(),
+    completed: json['completed'] ?? false,
+    iconCodePoint: json['iconCodePoint'] ?? 0xe873,
+    iconColorValue: json['iconColorValue'] ?? 0xFFFFD966,
+  );
+}
+
+class TodoStorage {
+  static Future<File> _getFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/todo_data.json');
+  }
+
+  static Future<List<TodoTask>> loadTasks() async {
+    try {
+      final file = await _getFile();
+      if (!await file.exists()) {
+        final now = DateTime.now();
+        return [
+          TodoTask(
+            id: 'todo-1',
+            title: 'Laboratory Report',
+            subject: 'Biology',
+            dueAt: DateTime(now.year, now.month, now.day + 1, 23, 59),
+            iconCodePoint: Icons.folder_copy_outlined.codePoint,
+            iconColorValue: 0xFFFFD85C,
+          ),
+          TodoTask(
+            id: 'todo-2',
+            title: 'Problem Set',
+            subject: 'Calculus',
+            dueAt: DateTime(now.year, now.month, now.day + 2, 7, 30),
+            iconCodePoint: Icons.calculate_outlined.codePoint,
+            iconColorValue: 0xFFBDBDBD,
+          ),
+          TodoTask(
+            id: 'todo-3',
+            title: 'Position Paper',
+            subject: 'English',
+            dueAt: DateTime(now.year, now.month, now.day + 3, 18, 0),
+            iconCodePoint: Icons.edit_note_outlined.codePoint,
+            iconColorValue: 0xFFD6E8FA,
+          ),
+          TodoTask(
+            id: 'todo-4',
+            title: 'Code Game',
+            subject: 'CMSC',
+            dueAt: DateTime(now.year, now.month, now.day - 1, 13, 30),
+            iconCodePoint: Icons.laptop_mac_outlined.codePoint,
+            iconColorValue: 0xFFBFE5EA,
+          ),
+        ];
+      }
+      final contents = await file.readAsString();
+      final List<dynamic> jsonData = jsonDecode(contents);
+      return jsonData.map((e) => TodoTask.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> saveTasks(List<TodoTask> tasks) async {
+    final file = await _getFile();
+    await file.writeAsString(
+      jsonEncode(tasks.map((e) => e.toJson()).toList()),
+      flush: true,
+    );
+  }
+}
+
+
+
+class StudentIdProfile {
+  final String name;
+  final String school;
+  final DateTime birthday;
+  final String yearLevel;
+  final int cardColorValue;
+  final String? photoPath;
+  final String logoStyle;
+  final String? customLogoPath;
+
+  StudentIdProfile({
+    this.name = 'Mike',
+    this.school = 'Cebu Institute of Technology - University',
+    DateTime? birthday,
+    this.yearLevel = '4',
+    this.cardColorValue = 0xFFBFDDFB,
+    this.photoPath,
+    this.logoStyle = 'ssc',
+    this.customLogoPath,
+  }) : birthday = birthday ?? DateTime(2004, 9, 13);
+
+  StudentIdProfile copyWith({
+    String? name,
+    String? school,
+    DateTime? birthday,
+    String? yearLevel,
+    int? cardColorValue,
+    String? photoPath,
+    bool clearPhoto = false,
+    String? logoStyle,
+    String? customLogoPath,
+    bool clearCustomLogo = false,
+  }) {
+    return StudentIdProfile(
+      name: name ?? this.name,
+      school: school ?? this.school,
+      birthday: birthday ?? this.birthday,
+      yearLevel: yearLevel ?? this.yearLevel,
+      cardColorValue: cardColorValue ?? this.cardColorValue,
+      photoPath: clearPhoto ? null : (photoPath ?? this.photoPath),
+      logoStyle: logoStyle ?? this.logoStyle,
+      customLogoPath: clearCustomLogo
+          ? null
+          : (customLogoPath ?? this.customLogoPath),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'school': school,
+    'birthday': birthday.toIso8601String(),
+    'yearLevel': yearLevel,
+    'cardColorValue': cardColorValue,
+    'photoPath': photoPath,
+    'logoStyle': logoStyle,
+    'customLogoPath': customLogoPath,
+  };
+
+  factory StudentIdProfile.fromJson(Map<String, dynamic> json) {
+    return StudentIdProfile(
+      name: json['name']?.toString() ?? 'Mike',
+      school:
+          json['school']?.toString() ??
+          'Cebu Institute of Technology - University',
+      birthday:
+          DateTime.tryParse(json['birthday']?.toString() ?? '') ??
+          DateTime(2004, 9, 13),
+      yearLevel: json['yearLevel']?.toString() ?? '4',
+      cardColorValue: json['cardColorValue'] ?? 0xFFBFDDFB,
+      photoPath: json['photoPath']?.toString(),
+      logoStyle: json['logoStyle']?.toString() ?? 'ssc',
+      customLogoPath: json['customLogoPath']?.toString(),
+    );
+  }
+}
+
+class StudentIdStorage {
+  static Future<File> _getProfileFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/student_id_profile.json');
+  }
+
+  static Future<StudentIdProfile> loadProfile() async {
+    try {
+      final file = await _getProfileFile();
+      if (!await file.exists()) return StudentIdProfile();
+      final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      return StudentIdProfile.fromJson(data);
+    } catch (_) {
+      return StudentIdProfile();
+    }
+  }
+
+  static Future<void> saveProfile(StudentIdProfile profile) async {
+    final file = await _getProfileFile();
+    await file.writeAsString(jsonEncode(profile.toJson()), flush: true);
+  }
+
+  static Future<String> persistPickedImage(
+    String sourcePath, {
+    required String prefix,
+  }) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final assetDir = Directory('${dir.path}/student_id_assets');
+    if (!await assetDir.exists()) {
+      await assetDir.create(recursive: true);
+    }
+
+    final lastDot = sourcePath.lastIndexOf('.');
+    final extension = lastDot >= 0 ? sourcePath.substring(lastDot) : '.jpg';
+    final filename =
+        '${prefix}_${DateTime.now().millisecondsSinceEpoch}$extension';
+    final saved = await File(sourcePath).copy('${assetDir.path}/$filename');
+    return saved.path;
+  }
+}
+
+class StudentIdCardVisual extends StatelessWidget {
+  final StudentIdProfile profile;
+  final bool compact;
+
+  const StudentIdCardVisual({
+    super.key,
+    required this.profile,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasPhoto =
+        profile.photoPath != null && File(profile.photoPath!).existsSync();
+    final cardHeight = compact ? 142.0 : 176.0;
+    final photoWidth = compact ? 94.0 : 116.0;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(
+        compact ? 10 : 14,
+        compact ? 10 : 15,
+        compact ? 10 : 14,
+        compact ? 9 : 13,
+      ),
+      decoration: BoxDecoration(
+        color: Color(profile.cardColorValue),
+        borderRadius: BorderRadius.circular(compact ? 15 : 18),
+        border: Border.all(color: const Color(0xFF242424), width: 1.6),
+      ),
+      child: SizedBox(
+        height: cardHeight,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: photoWidth,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F2F2),
+                        border: Border.all(
+                          color: const Color(0xFF242424),
+                          width: 1.4,
+                        ),
+                      ),
+                      child: hasPhoto
+                          ? Image.file(
+                              File(profile.photoPath!),
+                              fit: BoxFit.cover,
+                            )
+                          : Icon(
+                              Icons.person_rounded,
+                              size: compact ? 54 : 68,
+                              color: const Color(0xFF9AA2AA),
+                            ),
+                    ),
+                  ),
+                  SizedBox(height: compact ? 2 : 3),
+                  _barcode(compact),
+                ],
+              ),
+            ),
+            SizedBox(width: compact ? 11 : 15),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: compact ? 7 : 8,
+                    child: Center(child: _logo(profile, compact)),
+                  ),
+                  SizedBox(height: compact ? 5 : 8),
+                  Row(
+                    children: List.generate(
+                      compact ? 14 : 17,
+                      (_) => Expanded(
+                        child: Container(
+                          height: 1.35,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          color: const Color(0xFF222222),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: compact ? 7 : 10),
+                  Expanded(
+                    flex: 6,
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('NAME', compact),
+                              _value(
+                                profile.name.toUpperCase(),
+                                compact,
+                                maxLines: 1,
+                              ),
+                              SizedBox(height: compact ? 5 : 8),
+                              _label('SCHOOL', compact),
+                              _value(
+                                profile.school.toUpperCase(),
+                                compact,
+                                maxLines: 1,
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: compact ? 8 : 12),
+                        SizedBox(
+                          width: compact ? 86 : 104,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _label('BIRTHDAY', compact),
+                              _value(
+                                DateFormat(
+                                  'MM-dd-yyyy',
+                                ).format(profile.birthday),
+                                compact,
+                                maxLines: 1,
+                              ),
+                              SizedBox(height: compact ? 5 : 8),
+                              _label('YEAR LEVEL', compact),
+                              _value(profile.yearLevel, compact, maxLines: 1),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _barcode(bool compact) {
+    final widths = [
+      2.0,
+      1.0,
+      3.0,
+      1.0,
+      2.0,
+      4.0,
+      1.0,
+      2.0,
+      1.0,
+      3.0,
+      2.0,
+      1.0,
+      4.0,
+      2.0,
+      1.0,
+      3.0,
+      1.0,
+      2.0,
+    ];
+    final height = compact ? 17.0 : 23.0;
+    return SizedBox(
+      height: height,
+      child: FittedBox(
+        fit: BoxFit.fill,
+        child: Row(
+          children: [
+            for (final width in widths) ...[
+              Container(
+                width: width,
+                height: height,
+                color: const Color(0xFF202020),
+              ),
+              const SizedBox(width: 2),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  static Widget _label(String text, bool compact) => Text(
+    text,
+    style: TextStyle(
+      fontFamily: 'sans-serif',
+      fontSize: compact ? 7.2 : 8.5,
+      height: 1,
+      color: const Color(0xFF3D4650),
+    ),
+  );
+
+  static Widget _value(
+    String text,
+    bool compact, {
+    int maxLines = 1,
+  }) => Padding(
+    padding: const EdgeInsets.only(top: 2),
+    child: Text(
+      text,
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontFamily: 'sans-serif',
+        fontSize: compact ? 11.2 : 13.5,
+        height: 1.02,
+        fontWeight: FontWeight.w700,
+        color: const Color(0xFF161B20),
+      ),
+    ),
+  );
+
+  static Widget _logo(StudentIdProfile profile, bool compact) {
+    final customPath = profile.customLogoPath;
+    if (profile.logoStyle == 'custom' &&
+        customPath != null &&
+        File(customPath).existsSync()) {
+      return Image.file(
+        File(customPath),
+        height: compact ? 54 : 72,
+        fit: BoxFit.contain,
+      );
+    }
+
+    switch (profile.logoStyle) {
+      case 'student':
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.auto_awesome_rounded,
+              size: compact ? 17 : 22,
+              color: const Color(0xFF161616),
+            ),
+            Text(
+              'Student ID',
+              style: TextStyle(
+                fontFamily: 'serif',
+                fontSize: compact ? 23 : 30,
+                height: .9,
+                color: const Color(0xFF161616),
+              ),
+            ),
+          ],
+        );
+      case 'iskolar':
+        return Text(
+          '✦ ISKOLAR NG\nBAYAN',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'sans-serif',
+            fontSize: compact ? 14 : 18,
+            height: .9,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFFE74691),
+          ),
+        );
+      case 'slayer':
+        return Text(
+          'ACADEMIC\nSLAYER',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'sans-serif',
+            fontSize: compact ? 15 : 20,
+            height: .85,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w900,
+            color: const Color(0xFFFF5B57),
+          ),
+        );
+      case 'victim':
+        return Text(
+          'Academic\nVictim',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: 'serif',
+            fontSize: compact ? 18 : 24,
+            height: .85,
+            fontStyle: FontStyle.italic,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF8D69DF),
+          ),
+        );
+      case 'ssc':
+      default:
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Text(
+                  'SSC',
+                  style: TextStyle(
+                    fontFamily: 'sans-serif',
+                    fontSize: compact ? 34 : 44,
+                    height: .86,
+                    fontWeight: FontWeight.w900,
+                    fontStyle: FontStyle.italic,
+                    letterSpacing: 1.3,
+                    color: const Color(0xFF438BE8),
+                    shadows: const [
+                      Shadow(
+                        color: Colors.white,
+                        offset: Offset(2, 2),
+                        blurRadius: 0,
+                      ),
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: compact ? 32 : 42,
+                  bottom: -2,
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: compact ? 13 : 16,
+                    color: const Color(0xFFFFD800),
+                  ),
+                ),
+                Positioned(
+                  right: compact ? 24 : 31,
+                  bottom: -2,
+                  child: Icon(
+                    Icons.star_rounded,
+                    size: compact ? 13 : 16,
+                    color: const Color(0xFFFFD800),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: compact ? 3 : 5),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 7 : 9,
+                vertical: compact ? 2 : 3,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFF438BE8),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Text(
+                'STRUGGLING STUDENTS CLUB',
+                style: TextStyle(
+                  fontFamily: 'sans-serif',
+                  fontSize: compact ? 7.4 : 9.5,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: .1,
+                ),
+              ),
+            ),
+          ],
+        );
+    }
+  }
+}
+
+
+// ==========================================
 // 3. NOTIFICATION SERVICE
 // ==========================================
 class NotificationService {
@@ -257,12 +884,19 @@ class NotificationService {
   static const String alarmChannelId = 'class_alarms_channel_v5';
   static const String silentChannelId = 'class_silent_channel_v5';
 
-  static const MethodChannel _channel =
-      MethodChannel('com.example.schedule_app/settings');
+  static const MethodChannel _channel = MethodChannel(
+    'com.example.schedule_app/settings',
+  );
 
   // Pulsed rhythm: 1s vibrate, 200ms rest, 1s vibrate, 200ms rest, 1s vibrate (3s total active buzz)
-  static final Int64List threeSecVibrationPattern =
-      Int64List.fromList([0, 1000, 200, 1000, 200, 1000]);
+  static final Int64List threeSecVibrationPattern = Int64List.fromList([
+    0,
+    1000,
+    200,
+    1000,
+    200,
+    1000,
+  ]);
 
   /// Triggers a 3-second physical vibration on the device
   static Future<void> triggerVibration({int durationMs = 3000}) async {
@@ -278,11 +912,14 @@ class NotificationService {
     try {
       await _channel.invokeMethod('openNotificationSettings');
     } catch (e) {
-      debugPrint('Error opening notification settings via platform channel: $e');
+      debugPrint(
+        'Error opening notification settings via platform channel: $e',
+      );
       try {
         final androidImplementation = _notificationsPlugin
             .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>();
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         await androidImplementation?.requestExactAlarmsPermission();
       } catch (_) {}
     }
@@ -297,7 +934,8 @@ class NotificationService {
       try {
         final androidImplementation = _notificationsPlugin
             .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin>();
+              AndroidFlutterLocalNotificationsPlugin
+            >();
         await androidImplementation?.requestExactAlarmsPermission();
       } catch (_) {}
     }
@@ -315,8 +953,9 @@ class NotificationService {
   /// Checks if battery optimization is disabled for this app
   static Future<bool> isIgnoringBatteryOptimizations() async {
     try {
-      final bool? isIgnoring =
-          await _channel.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+      final bool? isIgnoring = await _channel.invokeMethod<bool>(
+        'isIgnoringBatteryOptimizations',
+      );
       return isIgnoring ?? false;
     } catch (e) {
       debugPrint('Error checking battery optimization status: $e');
@@ -334,8 +973,9 @@ class NotificationService {
       debugPrint('Error getting device local timezone: $e');
     }
 
-    const androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const initSettings = InitializationSettings(android: androidSettings);
 
     await _notificationsPlugin.initialize(
@@ -347,13 +987,20 @@ class NotificationService {
 
     final androidImplementation = _notificationsPlugin
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+          AndroidFlutterLocalNotificationsPlugin
+        >();
 
     // Delete older channel versions so new vibration pattern takes effect immediately
     try {
-      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v2');
-      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v3');
-      await androidImplementation?.deleteNotificationChannel('class_alarms_channel_v4');
+      await androidImplementation?.deleteNotificationChannel(
+        'class_alarms_channel_v2',
+      );
+      await androidImplementation?.deleteNotificationChannel(
+        'class_alarms_channel_v3',
+      );
+      await androidImplementation?.deleteNotificationChannel(
+        'class_alarms_channel_v4',
+      );
     } catch (_) {}
 
     // 2. Register Android Notification Channels
@@ -385,12 +1032,13 @@ class NotificationService {
     try {
       final androidImplementation = _notificationsPlugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       if (androidImplementation == null) return true;
 
       // Request standard POST_NOTIFICATIONS runtime permission
-      final notifGranted =
-          await androidImplementation.requestNotificationsPermission();
+      final notifGranted = await androidImplementation
+          .requestNotificationsPermission();
       return notifGranted ?? true;
     } catch (e) {
       debugPrint('Error requesting notification permission: $e');
@@ -403,7 +1051,8 @@ class NotificationService {
     try {
       final androidImplementation = _notificationsPlugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       return await androidImplementation?.canScheduleExactNotifications() ??
           true;
     } catch (e) {
@@ -491,8 +1140,9 @@ class NotificationService {
                       : Priority.defaultPriority,
                   playSound: reminder.isAlarm,
                   enableVibration: reminder.isAlarm,
-                  vibrationPattern:
-                      reminder.isAlarm ? threeSecVibrationPattern : null,
+                  vibrationPattern: reminder.isAlarm
+                      ? threeSecVibrationPattern
+                      : null,
                   audioAttributesUsage: reminder.isAlarm
                       ? AudioAttributesUsage.alarm
                       : AudioAttributesUsage.notification,
@@ -518,7 +1168,8 @@ class NotificationService {
       // Ensure notification permission is requested if not already granted
       final androidImplementation = _notificationsPlugin
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       await androidImplementation?.requestNotificationsPermission();
 
       if (isAlarm) {
@@ -533,8 +1184,7 @@ class NotificationService {
           channelDescription: isAlarm
               ? 'Audible alarms and 3-second vibration for upcoming courses'
               : 'Silent notifications for upcoming courses',
-          importance:
-              isAlarm ? Importance.max : Importance.defaultImportance,
+          importance: isAlarm ? Importance.max : Importance.defaultImportance,
           priority: isAlarm ? Priority.max : Priority.defaultPriority,
           playSound: isAlarm,
           enableVibration: isAlarm,
@@ -585,7 +1235,8 @@ class NotificationService {
         'id': testId,
         'triggerAtMillis': triggerTime.millisecondsSinceEpoch,
         'title': '[Countdown Alarm Test] 10s Alarm Triggered!',
-        'body': 'Alarm successfully woke up your lock screen with 3s vibration.',
+        'body':
+            'Alarm successfully woke up your lock screen with 3s vibration.',
         'isAlarm': true,
         'repeatWeekly': false,
       });
@@ -598,7 +1249,11 @@ class NotificationService {
   }
 
   static tz.TZDateTime _nextInstanceOfReminder(
-      int classDayOfWeek, int startHour, int startMinute, int reminderMinutes) {
+    int classDayOfWeek,
+    int startHour,
+    int startMinute,
+    int reminderMinutes,
+  ) {
     final tz.TZDateTime now = tz.TZDateTime.now(tz.local);
 
     tz.TZDateTime classTime = tz.TZDateTime(
@@ -615,8 +1270,9 @@ class NotificationService {
       classTime = classTime.add(const Duration(days: 1));
     }
 
-    tz.TZDateTime reminderTime =
-        classTime.subtract(Duration(minutes: reminderMinutes));
+    tz.TZDateTime reminderTime = classTime.subtract(
+      Duration(minutes: reminderMinutes),
+    );
 
     // If the reminder time has already passed for this week, advance by 7 days
     while (reminderTime.isBefore(now)) {
@@ -672,7 +1328,7 @@ class FolderlyScheduleApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const ScheduleHomeScreen(),
+      home: const FolderlyRootNavigation(),
     );
   }
 
@@ -707,6 +1363,1365 @@ class FolderlyScheduleApp extends StatelessWidget {
 }
 
 // ==========================================
+// 5. ROOT NAVIGATION + TO-DO PAGE
+// ==========================================
+class FolderlyRootNavigation extends StatefulWidget {
+  const FolderlyRootNavigation({super.key});
+
+  @override
+  State<FolderlyRootNavigation> createState() => _FolderlyRootNavigationState();
+}
+
+class _FolderlyRootNavigationState extends State<FolderlyRootNavigation> {
+  int _selectedIndex = 0;
+
+  final List<Widget> _pages = const [
+    ScheduleHomeScreen(),
+    TodoScreen(),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: IndexedStack(index: _selectedIndex, children: _pages),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 72,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              top: BorderSide(color: Colors.black.withValues(alpha: 0.08)),
+            ),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildNavItem(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
+              _buildNavItem(
+                1,
+                Icons.checklist_rounded,
+                Icons.checklist_rounded,
+                'To Do',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(
+    int index,
+    IconData icon,
+    IconData activeIcon,
+    String label,
+  ) {
+    final selected = _selectedIndex == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () => setState(() => _selectedIndex = index),
+        child: SizedBox(
+          height: 72,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: selected ? const Color(0xFFFFDE59) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  border: selected
+                      ? Border.all(color: const Color(0xFF222222), width: 1.2)
+                      : null,
+                ),
+                child: Icon(
+                  selected ? activeIcon : icon,
+                  size: 23,
+                  color: selected ? const Color(0xFF222222) : Colors.grey.shade500,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  fontFamily: 'sans-serif',
+                  fontSize: 11.5,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  color: selected ? const Color(0xFF222222) : Colors.grey.shade500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class TodoScreen extends StatefulWidget {
+  const TodoScreen({super.key});
+
+  @override
+  State<TodoScreen> createState() => _TodoScreenState();
+}
+
+class _TodoScreenState extends State<TodoScreen> {
+  List<TodoTask> _tasks = [];
+  TodoFilter _filter = TodoFilter.ongoing;
+  StudentIdProfile _profile = StudentIdProfile();
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    final tasks = await TodoStorage.loadTasks();
+    final profile = await StudentIdStorage.loadProfile();
+    if (!mounted) return;
+    setState(() {
+      _tasks = tasks;
+      _profile = profile;
+      _loading = false;
+    });
+  }
+
+  Future<void> _saveTasks() => TodoStorage.saveTasks(_tasks);
+
+  List<TodoTask> get _visibleTasks {
+    final list = switch (_filter) {
+      TodoFilter.ongoing => _tasks.where((t) => t.isOngoing).toList(),
+      TodoFilter.all => _tasks.where((t) => !t.completed).toList(),
+      TodoFilter.missed => _tasks.where((t) => t.isMissed).toList(),
+      TodoFilter.completed => _tasks.where((t) => t.completed).toList(),
+    };
+    list.sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    return list;
+  }
+
+  String get _filterLabel => switch (_filter) {
+    TodoFilter.ongoing => 'Ongoing',
+    TodoFilter.all => 'All',
+    TodoFilter.missed => 'Missed',
+    TodoFilter.completed => 'Completed',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = _visibleTasks;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        bottom: false,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+                children: [
+                  _buildStudentIdCard(),
+                  const SizedBox(height: 18),
+                  _buildTodoHeader(),
+                  const SizedBox(height: 8),
+                  if (visible.isEmpty)
+                    _buildEmptyState()
+                  else
+                    ...visible.map(_buildTodoCard),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildStudentIdCard() {
+    return Hero(
+      tag: 'student-id-card',
+      flightShuttleBuilder:
+          (
+            flightContext,
+            animation,
+            flightDirection,
+            fromHeroContext,
+            toHeroContext,
+          ) {
+            return Material(
+              color: Colors.transparent,
+              child: StudentIdCardVisual(profile: _profile, compact: true),
+            );
+          },
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _openIdCustomization,
+          borderRadius: BorderRadius.circular(15),
+          child: Stack(
+            children: [
+              StudentIdCardVisual(profile: _profile, compact: true),
+              Positioned(
+                top: 8,
+                right: 8,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.92),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.black.withValues(alpha: 0.12),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.edit_rounded,
+                    size: 16,
+                    color: Color(0xFF242424),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openIdCustomization() async {
+    final result = await Navigator.of(context).push<StudentIdProfile>(
+      PageRouteBuilder<StudentIdProfile>(
+        transitionDuration: const Duration(milliseconds: 430),
+        reverseTransitionDuration: const Duration(milliseconds: 330),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return IdCardCustomizationScreen(initialProfile: _profile);
+        },
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final curved = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+          final slide = Tween<Offset>(
+            begin: const Offset(0, 0.055),
+            end: Offset.zero,
+          ).animate(curved);
+          final scale = Tween<double>(
+            begin: 0.985,
+            end: 1,
+          ).animate(curved);
+
+          return FadeTransition(
+            opacity: curved,
+            child: SlideTransition(
+              position: slide,
+              child: ScaleTransition(scale: scale, child: child),
+            ),
+          );
+        },
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() => _profile = result);
+    }
+  }
+
+  Widget _buildTodoHeader() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        const Text(
+          'To-do',
+          style: TextStyle(
+            fontSize: 25,
+            fontStyle: FontStyle.italic,
+            color: Color(0xFF232323),
+          ),
+        ),
+        const SizedBox(width: 8),
+        PopupMenuButton<TodoFilter>(
+          onSelected: (value) => setState(() => _filter = value),
+          offset: const Offset(0, 38),
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFF242424), width: 1.2),
+          ),
+          itemBuilder: (_) => [
+            _filterMenuItem(
+              TodoFilter.ongoing,
+              'Ongoing',
+              Icons.schedule_rounded,
+            ),
+            _filterMenuItem(TodoFilter.all, 'All', Icons.list_alt_rounded),
+            _filterMenuItem(
+              TodoFilter.missed,
+              'Missed',
+              Icons.history_toggle_off_rounded,
+            ),
+            _filterMenuItem(
+              TodoFilter.completed,
+              'Completed',
+              Icons.check_rounded,
+            ),
+          ],
+          child: Container(
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD6E8FA),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFF242424), width: 1.3),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _filterLabel,
+                  style: const TextStyle(
+                    fontFamily: 'sans-serif',
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 7),
+                const Icon(Icons.keyboard_arrow_down_rounded, size: 19),
+              ],
+            ),
+          ),
+        ),
+        const Spacer(),
+        InkWell(
+          onTap: () => _showAddEditTodoSheet(),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            height: 34,
+            padding: const EdgeInsets.symmetric(horizontal: 13),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1F2025),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 3),
+                Text(
+                  'To-do',
+                  style: TextStyle(
+                    fontFamily: 'sans-serif',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  PopupMenuItem<TodoFilter> _filterMenuItem(
+    TodoFilter value,
+    String label,
+    IconData icon,
+  ) {
+    final selected = value == _filter;
+    return PopupMenuItem(
+      value: value,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 9),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFD6E8FA) : Colors.white,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontFamily: 'sans-serif',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Icon(icon, size: 21, color: const Color(0xFF222222)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTodoCard(TodoTask task) {
+    final missed = task.isMissed;
+    final date = DateFormat('MMM d, yyyy').format(task.dueAt);
+    final time = DateFormat('h:mm a').format(task.dueAt);
+
+    return Dismissible(
+      key: ValueKey(task.id),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.only(right: 18),
+        alignment: Alignment.centerRight,
+        decoration: BoxDecoration(
+          color: Colors.red.shade300,
+          borderRadius: BorderRadius.circular(11),
+        ),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+      ),
+      onDismissed: (_) {
+        setState(() => _tasks.removeWhere((t) => t.id == task.id));
+        _saveTasks();
+      },
+      child: InkWell(
+        onTap: () => _showAddEditTodoSheet(task: task),
+        borderRadius: BorderRadius.circular(11),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.fromLTRB(9, 6, 7, 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(color: const Color(0xFF333333), width: 1.1),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: Color(task.iconColorValue),
+                  borderRadius: BorderRadius.circular(5),
+                ),
+                child: Icon(
+                  IconData(task.iconCodePoint, fontFamily: 'MaterialIcons'),
+                  color: const Color(0xFF363636),
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      task.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontFamily: 'sans-serif',
+                        fontSize: 13.5,
+                        height: 1.05,
+                        fontWeight: FontWeight.w700,
+                        decoration:
+                            task.completed ? TextDecoration.lineThrough : null,
+                        color: task.completed
+                            ? Colors.grey.shade500
+                            : const Color(0xFF202020),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    RichText(
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      text: TextSpan(
+                        style: const TextStyle(
+                          fontFamily: 'sans-serif',
+                          fontSize: 10,
+                          color: Color(0xFF383838),
+                        ),
+                        children: [
+                          TextSpan(
+                            text: task.subject.isEmpty
+                                ? 'General'
+                                : task.subject,
+                          ),
+                          const TextSpan(text: ' | '),
+                          TextSpan(
+                            text: '$date $time',
+                            style: TextStyle(
+                              color: missed
+                                  ? const Color(0xFFD94A4A)
+                                  : const Color(0xFF5A9A35),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 7),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    final i = _tasks.indexWhere((t) => t.id == task.id);
+                    if (i != -1) {
+                      _tasks[i] = task.copyWith(completed: !task.completed);
+                    }
+                  });
+                  _saveTasks();
+                },
+                borderRadius: BorderRadius.circular(5),
+                child: Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: task.completed
+                        ? const Color(0xFFFFDE59)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: const Color(0xFF333333),
+                      width: 1.1,
+                    ),
+                  ),
+                  child: task.completed
+                      ? const Icon(
+                          Icons.check_rounded,
+                          size: 19,
+                          color: Color(0xFF222222),
+                        )
+                      : null,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 55),
+      child: Column(
+        children: [
+          Icon(
+            Icons.assignment_outlined,
+            size: 90,
+            color: Colors.grey.shade300,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _filter == TodoFilter.completed
+                ? 'No completed tasks yet.'
+                : 'No tasks to accomplish.',
+            style: TextStyle(
+              fontFamily: 'sans-serif',
+              fontSize: 15,
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddEditTodoSheet({TodoTask? task}) {
+    final title = TextEditingController(text: task?.title ?? '');
+    final subject = TextEditingController(text: task?.subject ?? '');
+    DateTime dueAt =
+        task?.dueAt ?? DateTime.now().add(const Duration(days: 1));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: const Color(0xFFFFF9F3),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          Future<void> pickDate() async {
+            final value = await showDatePicker(
+              context: context,
+              initialDate: dueAt,
+              firstDate: DateTime(2020),
+              lastDate: DateTime(2100),
+            );
+            if (value != null) {
+              setSheetState(() {
+                dueAt = DateTime(
+                  value.year,
+                  value.month,
+                  value.day,
+                  dueAt.hour,
+                  dueAt.minute,
+                );
+              });
+            }
+          }
+
+          Future<void> pickTime() async {
+            final value = await showTimePicker(
+              context: context,
+              initialTime: TimeOfDay.fromDateTime(dueAt),
+            );
+            if (value != null) {
+              setSheetState(() {
+                dueAt = DateTime(
+                  dueAt.year,
+                  dueAt.month,
+                  dueAt.day,
+                  value.hour,
+                  value.minute,
+                );
+              });
+            }
+          }
+
+          final media = MediaQuery.of(context);
+          final keyboardOpen = media.viewInsets.bottom > 0;
+          final bottomPadding = keyboardOpen
+              ? media.viewInsets.bottom + 24
+              : media.viewPadding.bottom + 42;
+
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, bottomPadding),
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    task == null ? 'Add To-do' : 'Edit To-do',
+                    style: const TextStyle(
+                      fontSize: 25,
+                      fontWeight: FontWeight.bold,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(
+                      labelText: 'Task title',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: subject,
+                    decoration: const InputDecoration(
+                      labelText: 'Subject / course',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: pickDate,
+                          icon: const Icon(
+                            Icons.calendar_today_outlined,
+                            size: 18,
+                          ),
+                          label: Text(
+                            DateFormat('MMM d, yyyy').format(dueAt),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: pickTime,
+                          icon: const Icon(Icons.schedule_rounded, size: 18),
+                          label: Text(DateFormat('h:mm a').format(dueAt)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF232323),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        if (title.text.trim().isEmpty) return;
+
+                        final value = TodoTask(
+                          id:
+                              task?.id ??
+                              DateTime.now().millisecondsSinceEpoch.toString(),
+                          title: title.text.trim(),
+                          subject: subject.text.trim(),
+                          dueAt: dueAt,
+                          completed: task?.completed ?? false,
+                          iconCodePoint:
+                              task?.iconCodePoint ??
+                              Icons.description_outlined.codePoint,
+                          iconColorValue:
+                              task?.iconColorValue ?? 0xFFFFD966,
+                        );
+
+                        setState(() {
+                          if (task == null) {
+                            _tasks.add(value);
+                          } else {
+                            final index = _tasks.indexWhere(
+                              (t) => t.id == task.id,
+                            );
+                            if (index != -1) _tasks[index] = value;
+                          }
+                        });
+
+                        _saveTasks();
+                        Navigator.pop(ctx);
+                      },
+                      child: Text(
+                        task == null ? 'Add To-do' : 'Save Changes',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class IdCardCustomizationScreen extends StatefulWidget {
+  final StudentIdProfile initialProfile;
+
+  const IdCardCustomizationScreen({
+    super.key,
+    required this.initialProfile,
+  });
+
+  @override
+  State<IdCardCustomizationScreen> createState() =>
+      _IdCardCustomizationScreenState();
+}
+
+class _IdCardCustomizationScreenState
+    extends State<IdCardCustomizationScreen> {
+  late StudentIdProfile _profile;
+  late final TextEditingController _nameController;
+  late final TextEditingController _schoolController;
+  late final TextEditingController _yearController;
+  bool _saving = false;
+
+  final List<int> _cardColors = const [
+    0xFFF1F1F1,
+    0xFFF7C9DC,
+    0xFFBFDDFB,
+    0xFFD3C7F6,
+    0xFFCFE8C5,
+    0xFFFFF693,
+    0xFFFFBE86,
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _profile = widget.initialProfile;
+    _nameController = TextEditingController(text: _profile.name);
+    _schoolController = TextEditingController(text: _profile.school);
+    _yearController = TextEditingController(text: _profile.yearLevel);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _schoolController.dispose();
+    _yearController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        maxHeight: 1200,
+        imageQuality: 90,
+      );
+      if (picked == null) return;
+
+      final savedPath = await StudentIdStorage.persistPickedImage(
+        picked.path,
+        prefix: 'student_photo',
+      );
+      if (!mounted) return;
+      setState(() {
+        _profile = _profile.copyWith(photoPath: savedPath);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not select photo: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickCustomLogo() async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1400,
+        maxHeight: 800,
+        imageQuality: 92,
+      );
+      if (picked == null) return;
+
+      final savedPath = await StudentIdStorage.persistPickedImage(
+        picked.path,
+        prefix: 'student_logo',
+      );
+      if (!mounted) return;
+      setState(() {
+        _profile = _profile.copyWith(
+          logoStyle: 'custom',
+          customLogoPath: savedPath,
+        );
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not select logo: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickBirthday() async {
+    final value = await showDatePicker(
+      context: context,
+      initialDate: _profile.birthday,
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+    );
+    if (value != null) {
+      setState(() {
+        _profile = _profile.copyWith(birthday: value);
+      });
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (_saving) return;
+
+    final name = _nameController.text.trim();
+    final school = _schoolController.text.trim();
+    final year = _yearController.text.trim();
+
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a name.')),
+      );
+      return;
+    }
+
+    setState(() => _saving = true);
+    final updated = _profile.copyWith(
+      name: name,
+      school: school.isEmpty ? 'School' : school,
+      yearLevel: year.isEmpty ? '-' : year,
+    );
+
+    await StudentIdStorage.saveProfile(updated);
+    if (!mounted) return;
+    Navigator.of(context).pop(updated);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(
+            Icons.keyboard_arrow_down_rounded,
+            size: 36,
+            color: Color(0xFF1F2025),
+          ),
+        ),
+        title: const Text(
+          'Edit ID Card',
+          style: TextStyle(
+            fontFamily: 'sans-serif',
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF202126),
+          ),
+        ),
+      ),
+      body: ListView(
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+        children: [
+          Hero(
+            tag: 'student-id-card',
+            child: Material(
+              color: Colors.transparent,
+              child: StudentIdCardVisual(profile: _previewProfile),
+            ),
+          ),
+          const SizedBox(height: 22),
+          _sectionTitle('Photo'),
+          const SizedBox(height: 10),
+          _photoEditor(),
+          const SizedBox(height: 22),
+          _sectionTitle('Color'),
+          const SizedBox(height: 10),
+          _colorPicker(),
+          const SizedBox(height: 24),
+          _sectionTitle('Logo'),
+          const SizedBox(height: 10),
+          _logoPicker(),
+          const SizedBox(height: 24),
+          _sectionTitle('Card details'),
+          const SizedBox(height: 10),
+          _detailsEditor(),
+          const SizedBox(height: 18),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum: const EdgeInsets.fromLTRB(18, 8, 18, 16),
+        child: SizedBox(
+          height: 54,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _saveProfile,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF232429),
+              disabledBackgroundColor: const Color(0xFFEAEAEA),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: _saving
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Save',
+                    style: TextStyle(
+                      fontFamily: 'sans-serif',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  StudentIdProfile get _previewProfile => _profile.copyWith(
+    name: _nameController.text.trim().isEmpty
+        ? _profile.name
+        : _nameController.text.trim(),
+    school: _schoolController.text.trim().isEmpty
+        ? _profile.school
+        : _schoolController.text.trim(),
+    yearLevel: _yearController.text.trim().isEmpty
+        ? _profile.yearLevel
+        : _yearController.text.trim(),
+  );
+
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        fontFamily: 'sans-serif',
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: Color(0xFF202126),
+      ),
+    );
+  }
+
+  Widget _photoEditor() {
+    final hasPhoto =
+        _profile.photoPath != null && File(_profile.photoPath!).existsSync();
+
+    return Row(
+      children: [
+        Container(
+          width: 76,
+          height: 76,
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F2F2),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD2D2D2)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: hasPhoto
+              ? Image.file(File(_profile.photoPath!), fit: BoxFit.cover)
+              : const Icon(
+                  Icons.person_rounded,
+                  size: 44,
+                  color: Color(0xFF9AA2AA),
+                ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: _pickPhoto,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF232429),
+              side: const BorderSide(color: Color(0xFFCCCCCC)),
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.photo_library_outlined, size: 19),
+            label: Text(hasPhoto ? 'Change photo' : 'Upload photo'),
+          ),
+        ),
+        if (hasPhoto) ...[
+          const SizedBox(width: 8),
+          IconButton(
+            tooltip: 'Remove photo',
+            onPressed: () {
+              setState(() {
+                _profile = _profile.copyWith(clearPhoto: true);
+              });
+            },
+            icon: const Icon(
+              Icons.delete_outline_rounded,
+              color: Colors.redAccent,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _colorPicker() {
+    return Wrap(
+      spacing: 13,
+      runSpacing: 12,
+      children: [
+        for (final value in _cardColors)
+          GestureDetector(
+            onTap: () {
+              setState(() {
+                _profile = _profile.copyWith(cardColorValue: value);
+              });
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 48,
+              height: 48,
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _profile.cardColorValue == value
+                      ? const Color(0xFF202126)
+                      : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(value),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.black.withValues(alpha: 0.04),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _logoPicker() {
+    final items = <({String id, String label})>[
+      (id: 'student', label: 'Student ID'),
+      (id: 'ssc', label: 'SSC'),
+      (id: 'iskolar', label: 'Iskolar ng Bayan'),
+      (id: 'slayer', label: 'Academic Slayer'),
+      (id: 'victim', label: 'Academic Victim'),
+      (id: 'custom', label: 'Custom logo'),
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: items.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+        childAspectRatio: 2.05,
+      ),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        final selected = _profile.logoStyle == item.id;
+
+        return InkWell(
+          onTap: () {
+            if (item.id == 'custom') {
+              _pickCustomLogo();
+            } else {
+              setState(() {
+                _profile = _profile.copyWith(logoStyle: item.id);
+              });
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: selected
+                    ? const Color(0xFF202126)
+                    : const Color(0xFFD7D7D7),
+                width: selected ? 1.8 : 1,
+              ),
+            ),
+            child: item.id == 'custom'
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.file_upload_outlined,
+                        size: 22,
+                        color: Color(0xFF444444),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _profile.customLogoPath == null
+                            ? 'Custom logo'
+                            : 'Change custom logo',
+                        style: const TextStyle(
+                          fontFamily: 'sans-serif',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  )
+                : _logoTilePreview(item.id, item.label),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _logoTilePreview(String id, String label) {
+    switch (id) {
+      case 'ssc':
+        return const Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              'SSC',
+              style: TextStyle(
+                fontFamily: 'sans-serif',
+                fontSize: 24,
+                height: .9,
+                fontWeight: FontWeight.w900,
+                fontStyle: FontStyle.italic,
+                color: Color(0xFF438BE8),
+              ),
+            ),
+            SizedBox(height: 3),
+            Text(
+              'STRUGGLING STUDENTS CLUB',
+              style: TextStyle(
+                fontFamily: 'sans-serif',
+                fontSize: 6.8,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF438BE8),
+              ),
+            ),
+          ],
+        );
+      case 'iskolar':
+        return const Center(
+          child: Text(
+            '✦ ISKOLAR NG BAYAN',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'sans-serif',
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              fontStyle: FontStyle.italic,
+              color: Color(0xFFE74691),
+            ),
+          ),
+        );
+      case 'slayer':
+        return const Center(
+          child: Text(
+            'ACADEMIC SLAYER',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'sans-serif',
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+              fontStyle: FontStyle.italic,
+              color: Color(0xFFFF5B57),
+            ),
+          ),
+        );
+      case 'victim':
+        return const Center(
+          child: Text(
+            'Academic Victim',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              fontStyle: FontStyle.italic,
+              color: Color(0xFF8D69DF),
+            ),
+          ),
+        );
+      case 'student':
+      default:
+        return const Center(
+          child: Text(
+            'Student ID',
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontSize: 20,
+              color: Color(0xFF202126),
+            ),
+          ),
+        );
+    }
+  }
+
+  Widget _detailsEditor() {
+    return Column(
+      children: [
+        TextField(
+          controller: _nameController,
+          onChanged: (_) => setState(() {}),
+          textCapitalization: TextCapitalization.words,
+          decoration: _fieldDecoration('Name'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _schoolController,
+          onChanged: (_) => setState(() {}),
+          textCapitalization: TextCapitalization.words,
+          decoration: _fieldDecoration('School'),
+        ),
+        const SizedBox(height: 12),
+        InkWell(
+          onTap: _pickBirthday,
+          borderRadius: BorderRadius.circular(12),
+          child: InputDecorator(
+            decoration: _fieldDecoration('Birthday'),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    DateFormat('MM-dd-yyyy').format(_profile.birthday),
+                    style: const TextStyle(
+                      fontFamily: 'sans-serif',
+                      fontSize: 15,
+                      color: Color(0xFF202126),
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.calendar_month_outlined,
+                  size: 21,
+                  color: Color(0xFF555555),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _yearController,
+          onChanged: (_) => setState(() {}),
+          keyboardType: TextInputType.number,
+          decoration: _fieldDecoration('Year level'),
+        ),
+      ],
+    );
+  }
+
+  InputDecoration _fieldDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 15,
+      ),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFBBBBBB)),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Color(0xFFBBBBBB)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(
+          color: Color(0xFF202126),
+          width: 1.6,
+        ),
+      ),
+    );
+  }
+}
+
+
+// ==========================================
 // 5. HOME SCREEN
 // ==========================================
 class ScheduleHomeScreen extends StatefulWidget {
@@ -721,7 +2736,15 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
   int _selectedDay = DateTime.now().weekday; // 1 = Mon, 7 = Sun
   bool _isLoading = true;
 
-  final List<String> _weekDays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+  final List<String> _weekDays = [
+    'MON',
+    'TUE',
+    'WED',
+    'THU',
+    'FRI',
+    'SAT',
+    'SUN',
+  ];
 
   @override
   void initState() {
@@ -757,12 +2780,20 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
     final now = DateTime.now();
     final today = now.weekday;
     final todayCourses = _allCourses.where((c) => c.dayOfWeek == today).toList()
-      ..sort((a, b) =>
-          (a.startHour * 60 + a.startMinute).compareTo(b.startHour * 60 + b.startMinute));
+      ..sort(
+        (a, b) => (a.startHour * 60 + a.startMinute).compareTo(
+          b.startHour * 60 + b.startMinute,
+        ),
+      );
 
     for (var c in todayCourses) {
-      final classEndToday =
-          DateTime(now.year, now.month, now.day, c.endHour, c.endMinute);
+      final classEndToday = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        c.endHour,
+        c.endMinute,
+      );
       if (now.isBefore(classEndToday)) {
         return c;
       }
@@ -776,36 +2807,72 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
       final currentClass = _getCurrentOrNextClassForToday();
       final now = DateTime.now();
       bool isActive = false;
+      int progress = 0;
       if (currentClass != null) {
-        final startToday = DateTime(now.year, now.month, now.day,
-            currentClass.startHour, currentClass.startMinute);
-        final endToday = DateTime(now.year, now.month, now.day,
-            currentClass.endHour, currentClass.endMinute);
+        final startToday = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          currentClass.startHour,
+          currentClass.startMinute,
+        );
+        final endToday = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          currentClass.endHour,
+          currentClass.endMinute,
+        );
         if (now.isAfter(startToday) && now.isBefore(endToday)) {
           isActive = true;
+          final totalMilliseconds = endToday
+              .difference(startToday)
+              .inMilliseconds;
+          if (totalMilliseconds > 0) {
+            progress =
+                ((now.difference(startToday).inMilliseconds /
+                            totalMilliseconds) *
+                        100)
+                    .round()
+                    .clamp(0, 100);
+          }
         }
       }
 
       await HomeWidget.saveWidgetData<String>(
-          'widget_title', currentClass?.title ?? 'No Class');
+        'widget_title',
+        currentClass?.title ?? 'No Class',
+      );
       await HomeWidget.saveWidgetData<String>(
-          'widget_time',
-          currentClass != null
-              ? '${currentClass.startTimeFormatted} - ${currentClass.endTimeFormatted}'
-              : 'Free Time');
+        'widget_time',
+        currentClass != null
+            ? '${currentClass.startTimeFormatted} - ${currentClass.endTimeFormatted}'
+            : 'Free Time',
+      );
       await HomeWidget.saveWidgetData<String>(
-          'widget_room',
-          currentClass != null
-              ? (currentClass.room.isNotEmpty ? currentClass.room : 'Scheduled')
-              : 'Free Time');
+        'widget_instructor',
+        currentClass?.instructor ?? '',
+      );
       await HomeWidget.saveWidgetData<String>(
-          'widget_start_time', currentClass?.startTimeFormatted ?? '00:00');
+        'widget_room',
+        currentClass != null
+            ? (currentClass.room.isNotEmpty ? currentClass.room : 'Scheduled')
+            : 'Free Time',
+      );
       await HomeWidget.saveWidgetData<String>(
-          'widget_end_time', currentClass?.endTimeFormatted ?? '00:00');
+        'widget_start_time',
+        currentClass?.startTimeFormatted ?? '00:00',
+      );
       await HomeWidget.saveWidgetData<String>(
-          'widget_image_path', currentClass?.imagePath ?? '');
-      await HomeWidget.saveWidgetData<bool>(
-          'widget_is_active', isActive);
+        'widget_end_time',
+        currentClass?.endTimeFormatted ?? '00:00',
+      );
+      await HomeWidget.saveWidgetData<String>(
+        'widget_image_path',
+        currentClass?.imagePath ?? '',
+      );
+      await HomeWidget.saveWidgetData<bool>('widget_is_active', isActive);
+      await HomeWidget.saveWidgetData<int>('widget_progress', progress);
 
       await HomeWidget.updateWidget(
         name: 'ScheduleWidgetProvider',
@@ -818,14 +2885,22 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
   CourseClass? _getNextClass() {
     final now = DateTime.now();
-    final dayCourses = _allCourses.where((c) => c.dayOfWeek == _selectedDay).toList()
-      ..sort((a, b) =>
-          (a.startHour * 60 + a.startMinute).compareTo(b.startHour * 60 + b.startMinute));
+    final dayCourses =
+        _allCourses.where((c) => c.dayOfWeek == _selectedDay).toList()..sort(
+          (a, b) => (a.startHour * 60 + a.startMinute).compareTo(
+            b.startHour * 60 + b.startMinute,
+          ),
+        );
 
     if (_selectedDay == now.weekday) {
       for (var c in dayCourses) {
-        final classEndToday =
-            DateTime(now.year, now.month, now.day, c.endHour, c.endMinute);
+        final classEndToday = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          c.endHour,
+          c.endMinute,
+        );
         if (now.isBefore(classEndToday)) {
           return c;
         }
@@ -837,9 +2912,12 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final nextClass = _getNextClass();
-    final dayClasses = _allCourses.where((c) => c.dayOfWeek == _selectedDay).toList()
-      ..sort((a, b) =>
-          (a.startHour * 60 + a.startMinute).compareTo(b.startHour * 60 + b.startMinute));
+    final dayClasses =
+        _allCourses.where((c) => c.dayOfWeek == _selectedDay).toList()..sort(
+          (a, b) => (a.startHour * 60 + a.startMinute).compareTo(
+            b.startHour * 60 + b.startMinute,
+          ),
+        );
 
     return Scaffold(
       body: Container(
@@ -889,10 +2967,14 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             )
                           : ListView.builder(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 20, vertical: 8),
+                                horizontal: 20,
+                                vertical: 8,
+                              ),
                               itemCount: dayClasses.length,
                               itemBuilder: (context, index) {
-                                return _buildClassTimelineCard(dayClasses[index]);
+                                return _buildClassTimelineCard(
+                                  dayClasses[index],
+                                );
                               },
                             ),
                     ),
@@ -903,7 +2985,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
     );
   }
 
-// --- Header ---
+  // --- Header ---
   Widget _buildHeader(BuildContext context) {
     final dateStr = DateFormat('EEEE, MMMM d').format(DateTime.now());
     return Padding(
@@ -940,8 +3022,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications_none_rounded,
-                    size: 28, color: Color(0xFF333333)),
+                icon: const Icon(
+                  Icons.notifications_none_rounded,
+                  size: 28,
+                  color: Color(0xFF333333),
+                ),
                 tooltip: 'Test Alarms & Notifications',
                 onPressed: () => _showNotificationTestModal(),
               ),
@@ -963,8 +3048,20 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
     bool isNowActive = false;
     double progress = 0.0;
     if (nextClass != null) {
-      final start = DateTime(now.year, now.month, now.day, nextClass.startHour, nextClass.startMinute);
-      final end = DateTime(now.year, now.month, now.day, nextClass.endHour, nextClass.endMinute);
+      final start = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        nextClass.startHour,
+        nextClass.startMinute,
+      );
+      final end = DateTime(
+        now.year,
+        now.month,
+        now.day,
+        nextClass.endHour,
+        nextClass.endMinute,
+      );
       if (now.isAfter(start) && now.isBefore(end)) {
         isNowActive = true;
         final totalMs = end.difference(start).inMilliseconds;
@@ -974,8 +3071,8 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
     }
 
     final customImagePath = nextClass?.imagePath;
-    final hasCustomImage = customImagePath != null &&
-        File(customImagePath).existsSync();
+    final hasCustomImage =
+        customImagePath != null && File(customImagePath).existsSync();
 
     return Container(
       width: double.infinity,
@@ -1039,7 +3136,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           letterSpacing: 0.2,
                         ),
                       ),
-                      const Icon(Icons.battery_3_bar, size: 14, color: Colors.black54),
+                      const Icon(
+                        Icons.battery_3_bar,
+                        size: 14,
+                        color: Colors.black54,
+                      ),
                     ],
                   ),
 
@@ -1091,8 +3192,8 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             Text(
                               nextClass != null
                                   ? (nextClass.room.isNotEmpty
-                                      ? nextClass.room
-                                      : 'Scheduled')
+                                        ? nextClass.room
+                                        : 'Scheduled')
                                   : 'Free Time',
                               maxLines: 1,
                               style: TextStyle(
@@ -1113,10 +3214,14 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: LinearProgressIndicator(
-                          value: isNowActive ? progress : (nextClass != null ? 0.3 : 0.0),
+                          value: isNowActive
+                              ? progress
+                              : (nextClass != null ? 0.3 : 0.0),
                           minHeight: 4,
                           backgroundColor: Colors.grey.shade300,
-                          valueColor: const AlwaysStoppedAnimation(Color(0xFF333333)),
+                          valueColor: const AlwaysStoppedAnimation(
+                            Color(0xFF333333),
+                          ),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1126,21 +3231,23 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           Text(
                             nextClass?.startTimeFormatted ?? '00:00',
                             style: const TextStyle(
-                                fontSize: 9,
-                                fontFamily: 'sans-serif',
-                                color: Colors.black54),
+                              fontSize: 9,
+                              fontFamily: 'sans-serif',
+                              color: Colors.black54,
+                            ),
                           ),
                           Text(
                             nextClass?.endTimeFormatted ?? '00:00',
                             style: const TextStyle(
-                                fontSize: 9,
-                                fontFamily: 'sans-serif',
-                                color: Colors.black54),
+                              fontSize: 9,
+                              fontFamily: 'sans-serif',
+                              color: Colors.black54,
+                            ),
                           ),
                         ],
-                      )
+                      ),
                     ],
-                  )
+                  ),
                 ],
               ),
             ),
@@ -1162,7 +3269,7 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                       color: Colors.black12,
                       blurRadius: 4,
                       offset: Offset(0, 2),
-                    )
+                    ),
                   ],
                 ),
                 child: Stack(
@@ -1170,24 +3277,39 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   children: [
                     const Positioned(
                       top: 6,
-                      child: Text('MENU',
-                          style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.bold,
-                              fontFamily: 'sans-serif',
-                              color: Colors.grey)),
+                      child: Text(
+                        'MENU',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: 'sans-serif',
+                          color: Colors.grey,
+                        ),
+                      ),
                     ),
                     const Positioned(
                       left: 6,
-                      child: Icon(Icons.fast_rewind, size: 14, color: Colors.grey),
+                      child: Icon(
+                        Icons.fast_rewind,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
                     ),
                     const Positioned(
                       right: 6,
-                      child: Icon(Icons.fast_forward, size: 14, color: Colors.grey),
+                      child: Icon(
+                        Icons.fast_forward,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
                     ),
                     const Positioned(
                       bottom: 6,
-                      child: Icon(Icons.play_arrow, size: 14, color: Colors.grey),
+                      child: Icon(
+                        Icons.play_arrow,
+                        size: 14,
+                        color: Colors.grey,
+                      ),
                     ),
                     // Center Button
                     GestureDetector(
@@ -1239,7 +3361,9 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
               duration: const Duration(milliseconds: 200),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
-                color: isSelected ? const Color(0xFFFFDE59) : Colors.transparent,
+                color: isSelected
+                    ? const Color(0xFFFFDE59)
+                    : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
                 border: isSelected
                     ? Border.all(color: Colors.black, width: 1.4)
@@ -1293,7 +3417,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
           decoration: BoxDecoration(
             color: Color(course.colorValue),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.black.withValues(alpha: 0.85), width: 1.2),
+            border: Border.all(
+              color: Colors.black.withValues(alpha: 0.85),
+              width: 1.2,
+            ),
             boxShadow: const [
               BoxShadow(
                 color: Colors.black12,
@@ -1331,7 +3458,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             margin: const EdgeInsets.only(right: 10),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(9),
-                              border: Border.all(color: Colors.black26, width: 1.2),
+                              border: Border.all(
+                                color: Colors.black26,
+                                width: 1.2,
+                              ),
                               image: DecorationImage(
                                 image: FileImage(File(course.imagePath!)),
                                 fit: BoxFit.cover,
@@ -1356,8 +3486,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   ),
                   if (course.room.isNotEmpty)
                     Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withValues(alpha: 0.7),
                         borderRadius: BorderRadius.circular(8),
@@ -1393,11 +3525,19 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
   // --- Add / Edit Subject Modal ---
   void _showAddEditClassDialog({CourseClass? classToEdit}) {
-    final titleController = TextEditingController(text: classToEdit?.title ?? '');
+    final titleController = TextEditingController(
+      text: classToEdit?.title ?? '',
+    );
+    final instructorController = TextEditingController(
+      text: classToEdit?.instructor ?? '',
+    );
     final roomController = TextEditingController(text: classToEdit?.room ?? '');
     int selectedDay = classToEdit?.dayOfWeek ?? _selectedDay;
     TimeOfDay startTime = classToEdit != null
-        ? TimeOfDay(hour: classToEdit.startHour, minute: classToEdit.startMinute)
+        ? TimeOfDay(
+            hour: classToEdit.startHour,
+            minute: classToEdit.startMinute,
+          )
         : const TimeOfDay(hour: 8, minute: 0);
     TimeOfDay endTime = classToEdit != null
         ? TimeOfDay(hour: classToEdit.endHour, minute: classToEdit.endMinute)
@@ -1449,9 +3589,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                 if (!await imgDir.exists()) {
                   await imgDir.create(recursive: true);
                 }
-                final filename = 'subj_${DateTime.now().millisecondsSinceEpoch}.jpg';
-                final savedImage =
-                    await File(picked.path).copy('${imgDir.path}/$filename');
+                final filename =
+                    'subj_${DateTime.now().millisecondsSinceEpoch}.jpg';
+                final savedImage = await File(
+                  picked.path,
+                ).copy('${imgDir.path}/$filename');
                 setModalState(() {
                   selectedImagePath = savedImage.path;
                 });
@@ -1461,7 +3603,8 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
             }
           }
 
-          final hasValidImage = selectedImagePath != null &&
+          final hasValidImage =
+              selectedImagePath != null &&
               File(selectedImagePath!).existsSync();
 
           return Padding(
@@ -1474,652 +3617,709 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Pull Handle
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 14),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Pull Handle
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 14),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade400,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
+                  ),
 
-                    // Dialog Title
-                    Text(
-                      classToEdit == null ? 'Add Subject' : 'Edit Subject',
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                        fontStyle: FontStyle.italic,
-                        letterSpacing: -0.3,
-                        color: Color(0xFF232323),
-                      ),
+                  // Dialog Title
+                  Text(
+                    classToEdit == null ? 'Add Subject' : 'Edit Subject',
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      fontStyle: FontStyle.italic,
+                      letterSpacing: -0.3,
+                      color: Color(0xFF232323),
                     ),
-                    const SizedBox(height: 14),
+                  ),
+                  const SizedBox(height: 14),
 
-                    // Gallery Profile Picture Picker
-                    Center(
-                      child: Column(
-                        children: [
-                          GestureDetector(
-                            onTap: pickGalleryImage,
-                            child: Stack(
-                              alignment: Alignment.bottomRight,
-                              children: [
-                                Container(
-                                  width: 74,
-                                  height: 74,
-                                  decoration: BoxDecoration(
-                                    color: Color(selectedColor).withValues(alpha: 0.4),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.black26,
-                                      width: 2,
-                                    ),
-                                    image: hasValidImage
-                                        ? DecorationImage(
-                                            image: FileImage(
-                                                File(selectedImagePath!)),
-                                            fit: BoxFit.cover,
-                                          )
-                                        : null,
+                  // Gallery Profile Picture Picker
+                  Center(
+                    child: Column(
+                      children: [
+                        GestureDetector(
+                          onTap: pickGalleryImage,
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              Container(
+                                width: 74,
+                                height: 74,
+                                decoration: BoxDecoration(
+                                  color: Color(
+                                    selectedColor,
+                                  ).withValues(alpha: 0.4),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.black26,
+                                    width: 2,
                                   ),
-                                  child: !hasValidImage
-                                      ? const Icon(
-                                          Icons.add_photo_alternate_rounded,
-                                          size: 32,
-                                          color: Color(0xFF444444),
+                                  image: hasValidImage
+                                      ? DecorationImage(
+                                          image: FileImage(
+                                            File(selectedImagePath!),
+                                          ),
+                                          fit: BoxFit.cover,
                                         )
                                       : null,
                                 ),
-                                Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF232323),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.camera_alt,
-                                    size: 13,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              TextButton.icon(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: const Color(0xFF333333),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                ),
-                                icon: const Icon(Icons.photo_library_outlined,
-                                    size: 16),
-                                label: Text(
-                                  !hasValidImage
-                                      ? 'Select Picture from Gallery'
-                                      : 'Change Picture',
-                                  style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600),
-                                ),
-                                onPressed: pickGalleryImage,
+                                child: !hasValidImage
+                                    ? const Icon(
+                                        Icons.add_photo_alternate_rounded,
+                                        size: 32,
+                                        color: Color(0xFF444444),
+                                      )
+                                    : null,
                               ),
-                              if (hasValidImage) ...[
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      size: 18, color: Colors.redAccent),
-                                  tooltip: 'Remove picture',
-                                  onPressed: () {
-                                    setModalState(() {
-                                      selectedImagePath = null;
-                                    });
-                                  },
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF232323),
+                                  shape: BoxShape.circle,
                                 ),
-                              ],
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 13,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    TextField(
-                      controller: titleController,
-                      decoration: InputDecoration(
-                        labelText: 'Course / Subject Name (e.g. CMSC 161)',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextField(
-                      controller: roomController,
-                      decoration: InputDecoration(
-                        labelText: 'Room / Building (e.g. Lab 301)',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Day selector in modal
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedDay,
-                      decoration: InputDecoration(
-                        labelText: 'Day of Week',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      items: List.generate(7, (idx) {
-                        return DropdownMenuItem(
-                          value: idx + 1,
-                          child: Text(_weekDays[idx]),
-                        );
-                      }),
-                      onChanged: (val) {
-                        if (val != null) setModalState(() => selectedDay = val);
-                      },
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Time pickers
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              final picked = await showTimePicker(
-                                  context: context, initialTime: startTime);
-                              if (picked != null) {
-                                setModalState(() => startTime = picked);
-                              }
-                            },
-                            child: Text('Start: ${startTime.format(context)}'),
-                          ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () async {
-                              final picked = await showTimePicker(
-                                  context: context, initialTime: endTime);
-                              if (picked != null) {
-                                setModalState(() => endTime = picked);
-                              }
-                            },
-                            child: Text('End: ${endTime.format(context)}'),
-                          ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF333333),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.photo_library_outlined,
+                                size: 16,
+                              ),
+                              label: Text(
+                                !hasValidImage
+                                    ? 'Select Picture from Gallery'
+                                    : 'Change Picture',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              onPressed: pickGalleryImage,
+                            ),
+                            if (hasValidImage) ...[
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  size: 18,
+                                  color: Colors.redAccent,
+                                ),
+                                tooltip: 'Remove picture',
+                                onPressed: () {
+                                  setModalState(() {
+                                    selectedImagePath = null;
+                                  });
+                                },
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                  ),
+                  const SizedBox(height: 10),
 
-                    // Reminders & Alarms Multi-Select Dropdown
-                    Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: isReminderDropdownOpen
-                              ? const Color(0xFF232323)
-                              : Colors.black26,
-                          width: isReminderDropdownOpen ? 1.5 : 1.0,
-                        ),
+                  TextField(
+                    controller: titleController,
+                    decoration: InputDecoration(
+                      labelText: 'Course / Subject Name (e.g. CMSC 161)',
+                      border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        color: isReminderDropdownOpen
-                            ? Colors.black.withValues(alpha: 0.02)
-                            : Colors.transparent,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Dropdown clickable header
-                          InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () {
-                              setModalState(() {
-                                isReminderDropdownOpen = !isReminderDropdownOpen;
-                              });
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 14, vertical: 12),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    selectedReminders.any((r) => r.isAlarm)
-                                        ? Icons.alarm_on_rounded
-                                        : (selectedReminders.isNotEmpty
-                                            ? Icons.notifications_active_outlined
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: instructorController,
+                    decoration: InputDecoration(
+                      labelText: 'Instructor Name (e.g. Prof. Dela Cruz)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: roomController,
+                    decoration: InputDecoration(
+                      labelText: 'Room / Building (e.g. Lab 301)',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Day selector in modal
+                  DropdownButtonFormField<int>(
+                    initialValue: selectedDay,
+                    decoration: InputDecoration(
+                      labelText: 'Day of Week',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: List.generate(7, (idx) {
+                      return DropdownMenuItem(
+                        value: idx + 1,
+                        child: Text(_weekDays[idx]),
+                      );
+                    }),
+                    onChanged: (val) {
+                      if (val != null) setModalState(() => selectedDay = val);
+                    },
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Time pickers
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: startTime,
+                            );
+                            if (picked != null) {
+                              setModalState(() => startTime = picked);
+                            }
+                          },
+                          child: Text('Start: ${startTime.format(context)}'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            final picked = await showTimePicker(
+                              context: context,
+                              initialTime: endTime,
+                            );
+                            if (picked != null) {
+                              setModalState(() => endTime = picked);
+                            }
+                          },
+                          child: Text('End: ${endTime.format(context)}'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Reminders & Alarms Multi-Select Dropdown
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: isReminderDropdownOpen
+                            ? const Color(0xFF232323)
+                            : Colors.black26,
+                        width: isReminderDropdownOpen ? 1.5 : 1.0,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      color: isReminderDropdownOpen
+                          ? Colors.black.withValues(alpha: 0.02)
+                          : Colors.transparent,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Dropdown clickable header
+                        InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            setModalState(() {
+                              isReminderDropdownOpen = !isReminderDropdownOpen;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  selectedReminders.any((r) => r.isAlarm)
+                                      ? Icons.alarm_on_rounded
+                                      : (selectedReminders.isNotEmpty
+                                            ? Icons
+                                                  .notifications_active_outlined
                                             : Icons.notifications_off_outlined),
-                                    size: 20,
-                                    color: const Color(0xFF232323),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          'Reminders & Alarms',
-                                          style: TextStyle(
-                                            fontFamily: 'serif',
-                                            fontSize: 11,
-                                            color: Colors.grey.shade700,
-                                            fontWeight: FontWeight.w600,
-                                          ),
+                                  size: 20,
+                                  color: const Color(0xFF232323),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Reminders & Alarms',
+                                        style: TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 11,
+                                          color: Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
                                         ),
-                                        const SizedBox(height: 2),
-                                        Text(
-                                          selectedReminders.isEmpty
-                                              ? 'No reminders (Tap to select)'
-                                              : selectedReminders
-                                                  .map((r) =>
-                                                      '${r.label} (${r.isAlarm ? "Alarm" : "Push"})')
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        selectedReminders.isEmpty
+                                            ? 'No reminders (Tap to select)'
+                                            : selectedReminders
+                                                  .map(
+                                                    (r) =>
+                                                        '${r.label} (${r.isAlarm ? "Alarm" : "Push"})',
+                                                  )
                                                   .join(', '),
-                                          style: TextStyle(
-                                            fontFamily: 'serif',
-                                            fontSize: 13,
-                                            color: selectedReminders.isEmpty
-                                                ? Colors.grey.shade600
-                                                : const Color(0xFF232323),
-                                            fontWeight:
-                                                selectedReminders.isEmpty
-                                                    ? FontWeight.normal
-                                                    : FontWeight.w600,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 13,
+                                          color: selectedReminders.isEmpty
+                                              ? Colors.grey.shade600
+                                              : const Color(0xFF232323),
+                                          fontWeight: selectedReminders.isEmpty
+                                              ? FontWeight.normal
+                                              : FontWeight.w600,
                                         ),
-                                      ],
-                                    ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
-                                  Icon(
-                                    isReminderDropdownOpen
-                                        ? Icons.arrow_drop_up_rounded
-                                        : Icons.arrow_drop_down_rounded,
-                                    color: const Color(0xFF232323),
-                                    size: 26,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                Icon(
+                                  isReminderDropdownOpen
+                                      ? Icons.arrow_drop_up_rounded
+                                      : Icons.arrow_drop_down_rounded,
+                                  color: const Color(0xFF232323),
+                                  size: 26,
+                                ),
+                              ],
                             ),
                           ),
+                        ),
 
-                          // Expanded Dropdown Content
-                          if (isReminderDropdownOpen) ...[
-                            const Divider(height: 1, color: Colors.black12),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Choose reminder timings & sound options:',
-                                    style: TextStyle(
-                                      fontFamily: 'serif',
-                                      fontSize: 12,
-                                      fontStyle: FontStyle.italic,
-                                      color: Colors.grey.shade700,
-                                    ),
+                        // Expanded Dropdown Content
+                        if (isReminderDropdownOpen) ...[
+                          const Divider(height: 1, color: Colors.black12),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Choose reminder timings & sound options:',
+                                  style: TextStyle(
+                                    fontFamily: 'serif',
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                    color: Colors.grey.shade700,
                                   ),
-                                  const SizedBox(height: 6),
-                                  ...[
-                                    {'label': '5 mins before', 'mins': 5},
-                                    {'label': '10 mins before', 'mins': 10},
-                                    {'label': '15 mins before', 'mins': 15},
-                                    {'label': '30 mins before', 'mins': 30},
-                                    {'label': '1 hour before', 'mins': 60},
-                                  ].map((item) {
-                                    final mins = item['mins'] as int;
-                                    final label = item['label'] as String;
-                                    final existing = selectedReminders
-                                        .where((r) => r.minutesBefore == mins)
-                                        .firstOrNull;
-                                    final isSelected = existing != null;
+                                ),
+                                const SizedBox(height: 6),
+                                ...[
+                                  {'label': '5 mins before', 'mins': 5},
+                                  {'label': '10 mins before', 'mins': 10},
+                                  {'label': '15 mins before', 'mins': 15},
+                                  {'label': '30 mins before', 'mins': 30},
+                                  {'label': '1 hour before', 'mins': 60},
+                                ].map((item) {
+                                  final mins = item['mins'] as int;
+                                  final label = item['label'] as String;
+                                  final existing = selectedReminders
+                                      .where((r) => r.minutesBefore == mins)
+                                      .firstOrNull;
+                                  final isSelected = existing != null;
 
-                                    return Container(
-                                      margin: const EdgeInsets.symmetric(
-                                          vertical: 3),
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 6, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: isSelected
-                                            ? const Color(0xFF232323)
-                                                .withValues(alpha: 0.05)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Row(
-                                        children: [
-                                          SizedBox(
-                                            width: 24,
-                                            height: 24,
-                                            child: Checkbox(
-                                              value: isSelected,
-                                              activeColor:
-                                                  const Color(0xFF232323),
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
+                                  return Container(
+                                    margin: const EdgeInsets.symmetric(
+                                      vertical: 3,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? const Color(
+                                              0xFF232323,
+                                            ).withValues(alpha: 0.05)
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: Checkbox(
+                                            value: isSelected,
+                                            activeColor: const Color(
+                                              0xFF232323,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            onChanged: (checked) {
+                                              setModalState(() {
+                                                if (checked == true) {
+                                                  selectedReminders.add(
+                                                    ClassReminder(
+                                                      minutesBefore: mins,
+                                                      isAlarm: true,
+                                                    ),
+                                                  );
+                                                  selectedReminders.sort(
+                                                    (a, b) => b.minutesBefore
+                                                        .compareTo(
+                                                          a.minutesBefore,
+                                                        ),
+                                                  );
+                                                } else {
+                                                  selectedReminders.removeWhere(
+                                                    (r) =>
+                                                        r.minutesBefore == mins,
+                                                  );
+                                                }
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: GestureDetector(
+                                            onTap: () {
+                                              setModalState(() {
+                                                if (isSelected) {
+                                                  selectedReminders.removeWhere(
+                                                    (r) =>
+                                                        r.minutesBefore == mins,
+                                                  );
+                                                } else {
+                                                  selectedReminders.add(
+                                                    ClassReminder(
+                                                      minutesBefore: mins,
+                                                      isAlarm: true,
+                                                    ),
+                                                  );
+                                                  selectedReminders.sort(
+                                                    (a, b) => b.minutesBefore
+                                                        .compareTo(
+                                                          a.minutesBefore,
+                                                        ),
+                                                  );
+                                                }
+                                              });
+                                            },
+                                            child: Text(
+                                              label,
+                                              style: TextStyle(
+                                                fontFamily: 'serif',
+                                                fontSize: 13,
+                                                fontWeight: isSelected
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                                color: const Color(0xFF232323),
                                               ),
-                                              onChanged: (checked) {
-                                                setModalState(() {
-                                                  if (checked == true) {
-                                                    selectedReminders.add(
-                                                        ClassReminder(
-                                                            minutesBefore: mins,
-                                                            isAlarm: true));
-                                                    selectedReminders.sort(
-                                                        (a, b) => b.minutesBefore
-                                                            .compareTo(a
-                                                                .minutesBefore));
-                                                  } else {
-                                                    selectedReminders
-                                                        .removeWhere((r) =>
-                                                            r.minutesBefore ==
-                                                            mins);
-                                                  }
-                                                });
-                                              },
                                             ),
                                           ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: GestureDetector(
-                                              onTap: () {
-                                                setModalState(() {
-                                                  if (isSelected) {
-                                                    selectedReminders
-                                                        .removeWhere((r) =>
-                                                            r.minutesBefore ==
-                                                            mins);
-                                                  } else {
-                                                    selectedReminders.add(
-                                                        ClassReminder(
-                                                            minutesBefore: mins,
-                                                            isAlarm: true));
-                                                    selectedReminders.sort(
-                                                        (a, b) => b.minutesBefore
-                                                            .compareTo(a
-                                                                .minutesBefore));
-                                                  }
-                                                });
-                                              },
-                                              child: Text(
-                                                label,
-                                                style: TextStyle(
-                                                  fontFamily: 'serif',
-                                                  fontSize: 13,
-                                                  fontWeight: isSelected
-                                                      ? FontWeight.bold
-                                                      : FontWeight.normal,
-                                                  color:
-                                                      const Color(0xFF232323),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          if (isSelected)
-                                            Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                // Alarm pill
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    setModalState(() {
-                                                      final idx =
-                                                          selectedReminders
-                                                              .indexWhere((r) =>
-                                                                  r.minutesBefore ==
-                                                                  mins);
-                                                      if (idx != -1) {
-                                                        selectedReminders[
-                                                            idx] = ClassReminder(
-                                                          minutesBefore: mins,
-                                                          isAlarm: true,
+                                        ),
+                                        if (isSelected)
+                                          Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              // Alarm pill
+                                              GestureDetector(
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    final idx = selectedReminders
+                                                        .indexWhere(
+                                                          (r) =>
+                                                              r.minutesBefore ==
+                                                              mins,
                                                         );
-                                                      }
-                                                    });
-                                                  },
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets
-                                                            .symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 4),
-                                                    decoration: BoxDecoration(
+                                                    if (idx != -1) {
+                                                      selectedReminders[idx] =
+                                                          ClassReminder(
+                                                            minutesBefore: mins,
+                                                            isAlarm: true,
+                                                          );
+                                                    }
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: existing.isAlarm
+                                                        ? const Color(
+                                                            0xFF232323,
+                                                          )
+                                                        : Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                    border: Border.all(
                                                       color: existing.isAlarm
                                                           ? const Color(
-                                                              0xFF232323)
-                                                          : Colors.white,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              6),
-                                                      border: Border.all(
-                                                        color: existing.isAlarm
-                                                            ? const Color(
-                                                                0xFF232323)
-                                                            : Colors.black26,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(
-                                                          Icons.alarm,
-                                                          size: 13,
-                                                          color: existing
-                                                                  .isAlarm
-                                                              ? Colors.white
-                                                              : const Color(
-                                                                  0xFF232323),
-                                                        ),
-                                                        const SizedBox(
-                                                            width: 3),
-                                                        Text(
-                                                          'Alarm',
-                                                          style: TextStyle(
-                                                            fontFamily:
-                                                                'serif',
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: existing
-                                                                    .isAlarm
-                                                                ? Colors.white
-                                                                : const Color(
-                                                                    0xFF232323),
-                                                          ),
-                                                        ),
-                                                      ],
+                                                              0xFF232323,
+                                                            )
+                                                          : Colors.black26,
                                                     ),
                                                   ),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons.alarm,
+                                                        size: 13,
+                                                        color: existing.isAlarm
+                                                            ? Colors.white
+                                                            : const Color(
+                                                                0xFF232323,
+                                                              ),
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        'Alarm',
+                                                        style: TextStyle(
+                                                          fontFamily: 'serif',
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              existing.isAlarm
+                                                              ? Colors.white
+                                                              : const Color(
+                                                                  0xFF232323,
+                                                                ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                                const SizedBox(width: 4),
-                                                // Push notification pill
-                                                GestureDetector(
-                                                  onTap: () {
-                                                    setModalState(() {
-                                                      final idx =
-                                                          selectedReminders
-                                                              .indexWhere((r) =>
-                                                                  r.minutesBefore ==
-                                                                  mins);
-                                                      if (idx != -1) {
-                                                        selectedReminders[
-                                                            idx] = ClassReminder(
-                                                          minutesBefore: mins,
-                                                          isAlarm: false,
+                                              ),
+                                              const SizedBox(width: 4),
+                                              // Push notification pill
+                                              GestureDetector(
+                                                onTap: () {
+                                                  setModalState(() {
+                                                    final idx = selectedReminders
+                                                        .indexWhere(
+                                                          (r) =>
+                                                              r.minutesBefore ==
+                                                              mins,
                                                         );
-                                                      }
-                                                    });
-                                                  },
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets
-                                                            .symmetric(
-                                                            horizontal: 8,
-                                                            vertical: 4),
-                                                    decoration: BoxDecoration(
+                                                    if (idx != -1) {
+                                                      selectedReminders[idx] =
+                                                          ClassReminder(
+                                                            minutesBefore: mins,
+                                                            isAlarm: false,
+                                                          );
+                                                    }
+                                                  });
+                                                },
+                                                child: Container(
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 8,
+                                                        vertical: 4,
+                                                      ),
+                                                  decoration: BoxDecoration(
+                                                    color: !existing.isAlarm
+                                                        ? const Color(
+                                                            0xFF232323,
+                                                          )
+                                                        : Colors.white,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                    border: Border.all(
                                                       color: !existing.isAlarm
                                                           ? const Color(
-                                                              0xFF232323)
-                                                          : Colors.white,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              6),
-                                                      border: Border.all(
-                                                        color: !existing.isAlarm
-                                                            ? const Color(
-                                                                0xFF232323)
-                                                            : Colors.black26,
-                                                      ),
-                                                    ),
-                                                    child: Row(
-                                                      children: [
-                                                        Icon(
-                                                          Icons
-                                                              .notifications_outlined,
-                                                          size: 13,
-                                                          color: !existing
-                                                                  .isAlarm
-                                                              ? Colors.white
-                                                              : const Color(
-                                                                  0xFF232323),
-                                                        ),
-                                                        const SizedBox(
-                                                            width: 3),
-                                                        Text(
-                                                          'Push',
-                                                          style: TextStyle(
-                                                            fontFamily:
-                                                                'serif',
-                                                            fontSize: 11,
-                                                            fontWeight:
-                                                                FontWeight.bold,
-                                                            color: !existing
-                                                                    .isAlarm
-                                                                ? Colors.white
-                                                                : const Color(
-                                                                    0xFF232323),
-                                                          ),
-                                                        ),
-                                                      ],
+                                                              0xFF232323,
+                                                            )
+                                                          : Colors.black26,
                                                     ),
                                                   ),
+                                                  child: Row(
+                                                    children: [
+                                                      Icon(
+                                                        Icons
+                                                            .notifications_outlined,
+                                                        size: 13,
+                                                        color: !existing.isAlarm
+                                                            ? Colors.white
+                                                            : const Color(
+                                                                0xFF232323,
+                                                              ),
+                                                      ),
+                                                      const SizedBox(width: 3),
+                                                      Text(
+                                                        'Push',
+                                                        style: TextStyle(
+                                                          fontFamily: 'serif',
+                                                          fontSize: 11,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          color:
+                                                              !existing.isAlarm
+                                                              ? Colors.white
+                                                              : const Color(
+                                                                  0xFF232323,
+                                                                ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
-                                              ],
-                                            ),
-                                        ],
-                                      ),
-                                    );
-                                   }),
-                                 ],
-                               ),
-                             ),
-                           ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Pastel color options
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: pastelPalette.map((colorVal) {
-                        final isChosen = selectedColor == colorVal;
-                        return GestureDetector(
-                          onTap: () =>
-                              setModalState(() => selectedColor = colorVal),
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              color: Color(colorVal),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isChosen ? Colors.black : Colors.black26,
-                                width: isChosen ? 2.5 : 1,
-                              ),
+                                              ),
+                                            ],
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
                             ),
                           ),
-                        );
-                      }).toList(),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: 22),
+                  ),
+                  const SizedBox(height: 14),
 
-                    // Save Button with plenty of breathing room
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF232323),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                  // Pastel color options
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: pastelPalette.map((colorVal) {
+                      final isChosen = selectedColor == colorVal;
+                      return GestureDetector(
+                        onTap: () =>
+                            setModalState(() => selectedColor = colorVal),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: Color(colorVal),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isChosen ? Colors.black : Colors.black26,
+                              width: isChosen ? 2.5 : 1,
+                            ),
+                          ),
                         ),
-                        onPressed: () async {
-                          if (titleController.text.trim().isEmpty) return;
-                          final updated = CourseClass(
-                            id: classToEdit?.id ??
-                                DateTime.now().millisecondsSinceEpoch.toString(),
-                            title: titleController.text.trim(),
-                            room: roomController.text.trim(),
-                            dayOfWeek: selectedDay,
-                            startHour: startTime.hour,
-                            startMinute: startTime.minute,
-                            endHour: endTime.hour,
-                            endMinute: endTime.minute,
-                            colorValue: selectedColor,
-                            imagePath: selectedImagePath,
-                            reminders: selectedReminders,
-                          );
+                      );
+                    }).toList(),
+                  ),
+                  const SizedBox(height: 22),
 
-                          setState(() {
-                            if (classToEdit != null) {
-                              final idx = _allCourses.indexWhere(
-                                  (c) => c.id == classToEdit.id);
-                              if (idx != -1) _allCourses[idx] = updated;
-                            } else {
-                              _allCourses.add(updated);
-                            }
-                          });
+                  // Save Button with plenty of breathing room
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF232323),
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () async {
+                        if (titleController.text.trim().isEmpty) return;
+                        final updated = CourseClass(
+                          id:
+                              classToEdit?.id ??
+                              DateTime.now().millisecondsSinceEpoch.toString(),
+                          title: titleController.text.trim(),
+                          instructor: instructorController.text.trim(),
+                          room: roomController.text.trim(),
+                          dayOfWeek: selectedDay,
+                          startHour: startTime.hour,
+                          startMinute: startTime.minute,
+                          endHour: endTime.hour,
+                          endMinute: endTime.minute,
+                          colorValue: selectedColor,
+                          imagePath: selectedImagePath,
+                          reminders: selectedReminders,
+                        );
 
-                          await NotificationService.scheduleCourseAlarm(updated);
-                          await _saveCourses();
-                          if (context.mounted) {
-                            Navigator.pop(context);
+                        setState(() {
+                          if (classToEdit != null) {
+                            final idx = _allCourses.indexWhere(
+                              (c) => c.id == classToEdit.id,
+                            );
+                            if (idx != -1) _allCourses[idx] = updated;
+                          } else {
+                            _allCourses.add(updated);
                           }
-                        },
-                        child: const Text(
-                          'Save Class',
-                          style: TextStyle(
-                              fontFamily: 'serif',
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold),
+                        });
+
+                        await NotificationService.scheduleCourseAlarm(updated);
+                        await _saveCourses();
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      child: const Text(
+                        'Save Class',
+                        style: TextStyle(
+                          fontFamily: 'serif',
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-        ),
-      );
+            ),
+          );
+        },
+      ),
+    );
   }
 
   void _showNotificationTestModal() {
@@ -2161,8 +4361,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                 // Title Header
                 Row(
                   children: [
-                    const Icon(Icons.notifications_active_outlined,
-                        size: 24, color: Color(0xFF232323)),
+                    const Icon(
+                      Icons.notifications_active_outlined,
+                      size: 24,
+                      color: Color(0xFF232323),
+                    ),
                     const SizedBox(width: 8),
                     const Text(
                       'Alarms & Notifications',
@@ -2180,7 +4383,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
                 // Card 1: Instant Alarm Sound
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -2194,8 +4400,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           color: const Color(0xFFFF9E79).withValues(alpha: 0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.alarm_on,
-                            size: 22, color: Color(0xFF232323)),
+                        child: const Icon(
+                          Icons.alarm_on,
+                          size: 22,
+                          color: Color(0xFF232323),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2229,27 +4438,35 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           backgroundColor: const Color(0xFF232323),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                         onPressed: () async {
-                          final ok = await NotificationService
-                              .sendTestNotification(isAlarm: true);
+                          final ok =
+                              await NotificationService.sendTestNotification(
+                                isAlarm: true,
+                              );
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
-                                content: Text(ok
-                                    ? '🔔 Alarm triggered with 3s vibration!'
-                                    : '⚠️ Failed to trigger alarm.'),
+                                content: Text(
+                                  ok
+                                      ? '🔔 Alarm triggered with 3s vibration!'
+                                      : '⚠️ Failed to trigger alarm.',
+                                ),
                                 duration: const Duration(seconds: 2),
                               ),
                             );
                           }
                         },
-                        child: const Text('Test',
-                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                        child: const Text(
+                          'Test',
+                          style: TextStyle(fontFamily: 'serif', fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -2258,7 +4475,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
                 // Card 2: Instant Push Notification
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
@@ -2272,8 +4492,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           color: const Color(0xFFD6E8FA).withValues(alpha: 0.5),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.notifications_none,
-                            size: 22, color: Color(0xFF232323)),
+                        child: const Icon(
+                          Icons.notifications_none,
+                          size: 22,
+                          color: Color(0xFF232323),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2308,27 +4531,35 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           foregroundColor: const Color(0xFF232323),
                           side: const BorderSide(color: Colors.black26),
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 8),
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                         onPressed: () async {
-                          final ok = await NotificationService
-                              .sendTestNotification(isAlarm: false);
+                          final ok =
+                              await NotificationService.sendTestNotification(
+                                isAlarm: false,
+                              );
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
-                                content: Text(ok
-                                    ? '🔕 Test push notification sent!'
-                                    : '⚠️ Failed to send push.'),
+                                content: Text(
+                                  ok
+                                      ? '🔕 Test push notification sent!'
+                                      : '⚠️ Failed to send push.',
+                                ),
                                 duration: const Duration(seconds: 2),
                               ),
                             );
                           }
                         },
-                        child: const Text('Test',
-                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                        child: const Text(
+                          'Test',
+                          style: TextStyle(fontFamily: 'serif', fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -2337,12 +4568,16 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
                 // Card 3: 10s Background Countdown Alarm
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: const Color(0xFFC0392B).withValues(alpha: 0.3)),
+                      color: const Color(0xFFC0392B).withValues(alpha: 0.3),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -2352,8 +4587,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           color: Color(0xFFFCE2E6),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(Icons.timer_outlined,
-                            size: 22, color: Color(0xFFC0392B)),
+                        child: const Icon(
+                          Icons.timer_outlined,
+                          size: 22,
+                          color: Color(0xFFC0392B),
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -2387,27 +4625,35 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                           backgroundColor: const Color(0xFFC0392B),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 8),
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
                         ),
                         onPressed: () async {
-                          final ok = await NotificationService
-                              .scheduleTestCountdownAlarm(seconds: 10);
+                          final ok =
+                              await NotificationService.scheduleTestCountdownAlarm(
+                                seconds: 10,
+                              );
                           if (ctx.mounted) {
                             ScaffoldMessenger.of(ctx).showSnackBar(
                               SnackBar(
-                                content: Text(ok
-                                    ? '⏱️ 10s alarm scheduled! Lock phone now to test.'
-                                    : '⚠️ Failed to schedule 10s alarm.'),
+                                content: Text(
+                                  ok
+                                      ? '⏱️ 10s alarm scheduled! Lock phone now to test.'
+                                      : '⚠️ Failed to schedule 10s alarm.',
+                                ),
                                 duration: const Duration(seconds: 4),
                               ),
                             );
                           }
                         },
-                        child: const Text('Start 10s',
-                            style: TextStyle(fontFamily: 'serif', fontSize: 12)),
+                        child: const Text(
+                          'Start 10s',
+                          style: TextStyle(fontFamily: 'serif', fontSize: 12),
+                        ),
                       ),
                     ],
                   ),
@@ -2422,7 +4668,9 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF232323).withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
@@ -2430,8 +4678,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.settings_outlined,
-                            size: 18, color: Color(0xFF232323)),
+                        const Icon(
+                          Icons.settings_outlined,
+                          size: 18,
+                          color: Color(0xFF232323),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -2457,8 +4708,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.arrow_forward_ios_rounded,
-                            size: 13, color: Colors.black45),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 13,
+                          color: Colors.black45,
+                        ),
                       ],
                     ),
                   ),
@@ -2473,7 +4727,9 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                   borderRadius: BorderRadius.circular(12),
                   child: Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 10),
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFF232323).withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(12),
@@ -2481,8 +4737,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.battery_charging_full_outlined,
-                            size: 18, color: Color(0xFF232323)),
+                        const Icon(
+                          Icons.battery_charging_full_outlined,
+                          size: 18,
+                          color: Color(0xFF232323),
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -2508,8 +4767,11 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                             ],
                           ),
                         ),
-                        const Icon(Icons.arrow_forward_ios_rounded,
-                            size: 13, color: Colors.black45),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 13,
+                          color: Colors.black45,
+                        ),
                       ],
                     ),
                   ),
@@ -2529,11 +4791,14 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
                       ),
                     ),
                     onPressed: () => Navigator.pop(ctx),
-                    child: const Text('Done',
-                        style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Done',
+                      style: TextStyle(
+                        fontFamily: 'serif',
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -2547,8 +4812,10 @@ class _ScheduleHomeScreenState extends State<ScheduleHomeScreen> {
 
 // Extension to allow quick children parameter syntax
 extension RowExtension on Row {
-  static Row withChildren(
-      {required List<Widget> left, required List<Widget> right}) {
+  static Row withChildren({
+    required List<Widget> left,
+    required List<Widget> right,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [...left, ...right],
